@@ -156,6 +156,15 @@ class Settings(BaseSettings):
     embedding_cache_max_entries: int = 1000
     embedding_cache_trim_count: int = 200
 
+    # Multimodal chat (PR13) — image captioning + voice transcription
+    media_storage_dir: str = "/app/data/attachments"
+    vision_api_key: str = ""
+    vision_base_url: str = "https://api.openai.com/v1"
+    vision_model: str = "gpt-4o"
+    whisper_api_key: str = ""
+    whisper_base_url: str = "https://api.openai.com/v1"
+    whisper_model: str = "whisper-1"
+
     # CORS 配置
     # 生产环境建议配置具体域名，例如 "https://example.com,https://app.example.com"
     # 使用 * 允许所有来源，适用于公开的无凭证接口
@@ -271,3 +280,20 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+
+# ── Multimodal chat (PR13) ─────────────────────────────────────────────────
+MAX_IMAGE_BYTES: int = 5 * 1024 * 1024            # 5 MB / image
+MAX_AUDIO_BYTES: int = 3 * 1024 * 1024            # 3 MB / audio (60s Opus ≪ 3 MB)
+MAX_ATTACHMENTS_PER_MESSAGE: int = 3              # D4 cap
+MAX_AUDIO_DURATION_MS: int = 60_000              # 60 s
+
+ALLOWED_IMAGE_MIME: frozenset[str] = frozenset({
+    "image/jpeg", "image/png", "image/webp",
+})
+ALLOWED_AUDIO_MIME: frozenset[str] = frozenset({
+    "audio/webm", "audio/ogg", "audio/wav", "audio/mpeg", "audio/mp4",
+})
+
+# Public id regex for MessageAttachment rows (matches models.py default).
+ATTACHMENT_ID_PATTERN: str = r"^att_[0-9a-f]{12}$"

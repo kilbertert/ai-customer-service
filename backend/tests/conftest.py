@@ -55,6 +55,41 @@ def mock_llm_service(monkeypatch, request):
     monkeypatch.setattr("api.v1.endpoints.get_llm_service", _mock_get_llm_service)
 
 
+@pytest.fixture(autouse=True)
+def mock_multimodal_services(monkeypatch, request):
+    """PR13: short-circuit the vision/Whisper services so tests don't hit
+    external APIs. Mirrors ``mock_llm_service`` above.
+    """
+    integration_fixtures = {"client", "public_client", "default_agent_id"}
+    if not integration_fixtures.intersection(set(request.fixturenames)):
+        return
+
+    class _MockVision:
+        async def describe_image(self, image_bytes, mime_type):
+            return "mock image description"
+
+    class _MockWhisper:
+        async def transcribe(self, audio_bytes, mime_type, language=None):
+            return "mock transcript"
+
+    def _mock_get_vision_service(agent):
+        return _MockVision()
+
+    def _mock_get_whisper_service(agent):
+        return _MockWhisper()
+
+    monkeypatch.setattr(
+        "services.vision_service.get_vision_service", _mock_get_vision_service
+    )
+    monkeypatch.setattr(
+        "services.asr_service.get_whisper_service", _mock_get_whisper_service
+    )
+    # PR13: api.v1.endpoints imports these names lazily inside
+    # prepare_chat_request, so patching services.vision_service /
+    # services.asr_service is sufficient (sys.modules cache resolution).
+    # Patching the endpoints module attribute would fail (no such name).
+
+
 async def reset_quota():
     async with database.AsyncSessionLocal() as session:
         from datetime import datetime, timezone

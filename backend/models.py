@@ -16,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 from sqlalchemy.sql import func
 
 from database import Base
@@ -96,6 +96,19 @@ class Agent(Base):
 
     # SiliconFlow Embedding API Key
     siliconflow_api_key = Column(String(500), nullable=True)
+
+    # Multimodal chat (PR13) — image captioning + voice transcription
+    vision_api_key = Column(String(500), nullable=True)
+    vision_base_url = Column(
+        String(500), nullable=True, default="https://api.openai.com/v1"
+    )
+    vision_provider_type = Column(String(20), nullable=True, default="openai")
+    vision_model = Column(String(100), nullable=True, default="gpt-4o")
+    whisper_api_key = Column(String(500), nullable=True)
+    whisper_base_url = Column(
+        String(500), nullable=True, default="https://api.openai.com/v1"
+    )
+    whisper_model = Column(String(100), nullable=True, default="whisper-1")
 
     # AI服务商配置
     provider_type = Column(
@@ -382,6 +395,13 @@ class ChatMessage(Base):
 
     # 关系
     session = relationship("ChatSession", back_populates="messages")
+    # PR13: viewonly back-ref; the chat pipeline does the FK back-fill
+    # explicitly in persist_chat_response (see api/v1/endpoints.py).
+    attachments = relationship(
+        "MessageAttachment",
+        primaryjoin="ChatMessage.id==foreign(MessageAttachment.message_id)",
+        viewonly=True,
+    )
 
     # 索引
     __table_args__ = (
@@ -411,6 +431,10 @@ class WorkspaceQuota(Base):
     used_qa_items = Column(Integer, default=0)
     used_messages_today = Column(Integer, default=0)
     used_total_text_mb = Column(Float, default=0.0)
+
+    # Multimodal chat (PR13) — column reserved; daily MB cap NOT enforced in PR13.
+    max_attachment_mb_per_day = Column(Integer, default=50)
+    used_attachment_mb_today = Column(Float, default=0.0)
 
     # 重置时间
     last_message_reset = Column(DateTime(timezone=True), nullable=True)
@@ -612,3 +636,67 @@ class KbChunk(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     document = relationship("KbDocument", back_populates="chunks")
+
+
+class MessageAttachment(Base):
+    """Multimodal attachment row (image / audio) attached to a chat turn (PR13).
+
+    Two-phase lifecycle: rows are inserted on `POST /api/v1/chat/attachments` with
+    `status="pending"` and a `session_id` set; the chat pipeline runs the
+    vision/Whisper service synchronously in `prepare_chat_request`, fills
+    `description` / `transcript`, and flips status to `processed` (or `failed`
+    with `error_message`). FK `message_id` is back-filled in
+    `persist_chat_response`. Bytes live on disk under ``{MEDIA_STORAGE_DIR}/{sha256[:2]}/{sha256}``.
+    """
+
+    __tablename__ = "message_attachments"
+
+    id = Column(
+        String(50), primary_key=True,
+        default=lambda: f"att_{uuid.uuid4().hex[:12]}",
+    )
+    message_id = Column(
+        Integer, ForeignKey("chat_messages.id"), nullable=True, index=True,
+    )
+    session_id = Column(
+        String(50), ForeignKey("chat_sessions.id"), nullable=True, index=True,
+    )
+    agent_id = Column(
+        String(50), ForeignKey("agents.id"), nullable=False, index=True,
+    )
+    kind = Column(
+        SQLEnum("image", "audio", name="attachment_kind"),
+        nullable=False,
+    )
+    mime_type = Column(String(100), nullable=False)
+    filename = Column(String(500), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    storage_key = Column(String(200), nullable=False, unique=True)
+    sha256 = Column(String(64), nullable=False, index=True)
+
+    # Modality-specific outputs (filled in by vision/ASR services).
+    transcript = Column(Text, nullable=True)        # audio
+    description = Column(Text, nullable=True)       # image
+    duration_ms = Column(Integer, nullable=True)    # audio (client-supplied)
+
+    # Lifecycle
+    status = Column(
+        SQLEnum(
+            "pending", "processing", "processed", "failed",
+            name="attachment_status",
+        ),
+        nullable=False, default="pending", index=True,
+    )
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    session = relationship("ChatSession")
+    agent = relationship("Agent")
+    message = relationship("ChatMessage", foreign_keys=[message_id])
+
+    __table_args__ = (
+        Index("ix_msg_attach_session_kind", "session_id", "kind"),
+        Index("ix_msg_attach_sha256", "sha256"),
+    )

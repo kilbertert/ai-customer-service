@@ -108,7 +108,11 @@ async def init_db():
     # before SQLAlchemy introspects the database.
     from sqlite_migrations import run_sqlite_migrations
 
-    run_sqlite_migrations(settings.database_url)
+    # PR13: prefer the module-level ``database_url`` global (kept in sync by
+    # ``configure_database``) over the cached ``settings.database_url`` so that
+    # conftest-style test setup that mutates ``DATABASE_URL`` env + re-``configure_database``
+    # mid-session actually hits the right file.
+    run_sqlite_migrations(database_url)
 
     async with engine.begin() as conn:
         from models import (

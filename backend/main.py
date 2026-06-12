@@ -179,6 +179,9 @@ app.include_router(auth.router, prefix="/api/admin", tags=["auth"])
 # v1 API
 app.include_router(v1_endpoints.router, tags=["v1"])
 app.include_router(v1_kb_doc_endpoints.router, tags=["kb-documents"])
+# PR13: public chat-visitor attachment upload + content streaming.
+from api.v1.attachments_endpoints import router as attachments_router
+app.include_router(attachments_router, prefix="/api/v1")
 
 
 # SDK.js 路由 - 用于嵌入 widget

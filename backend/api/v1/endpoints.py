@@ -40,6 +40,7 @@ from models import (
     KnowledgeFile,
     ChatSession,
     ChatMessage,
+    MessageAttachment,   # PR13
     Workspace,
     WorkspaceQuota,
     AdminUser,
@@ -141,6 +142,19 @@ def widget_locale_response_instruction(widget_locale: Optional[str]) -> str:
         return ""
     return f"\n\n{directive}"
 
+
+def _placeholder(att: MessageAttachment) -> str:
+    """Textual stand-in used when vision/ASR is unavailable (PR13)."""
+    if att.kind == "image":
+        return (
+            f"[Image: {att.filename}] (image description unavailable; "
+            "please describe what you see)"
+        )
+    return (
+        f"[Audio message: {att.filename}] (transcription unavailable; "
+        "please type the question instead)"
+    )
+
 # 预设人设提示词（仅在后端保存，前端不可见）
 PERSONA_PRESETS = {
     "general": """Role: You are an AI chatbot that helps users resolve their inquiries, questions, and requests. Your goal is always to provide high-quality, friendly, and efficient responses. Your responsibility is to carefully listen to users, understand their needs, and do your best to assist them or guide them to appropriate resources. If a question is not sufficiently clear, you should proactively ask clarifying questions. Be sure to maintain a positive and constructive tone at the end of your response.
@@ -192,9 +206,14 @@ def get_restricted_reply(
     return restricted_reply or default
 
 
-def get_agent_plaintext_keys(agent: Agent) -> Optional[str]:
-    """Return decrypted agent API key, with env fallback for default agent."""
-    stored_key = decrypt_api_key(agent.api_key)
+def get_agent_plaintext_keys(agent: Agent, attr: str = "api_key") -> Optional[str]:
+    """Return decrypted agent API key, with env fallback for default agent.
+
+    PR13: ``attr`` selects which encrypted column to read — defaults to
+    ``api_key`` (chat LLM) but also supports ``vision_api_key`` and
+    ``whisper_api_key`` for the multimodal services.
+    """
+    stored_key = decrypt_api_key(getattr(agent, attr, None) or "")
     if stored_key:
         return stored_key
     # Fallback to environment variable for default agent
@@ -938,6 +957,118 @@ async def prepare_chat_request(
         except Exception as e:
             logger.warning(f"KB retrieval in chat skipped: {e}")
 
+    # ---- PR13 multimodal: resolve attachments, run vision/ASR, fold into text ----
+    attachment_summaries: List[Dict[str, Any]] = []
+    combined_text_extras: List[str] = []
+    attachment_db_ids: List[str] = []
+
+    if getattr(request, "attachment_ids", None):
+        from config import MAX_ATTACHMENTS_PER_MESSAGE
+        from services.asr_service import WhisperUnavailableError, get_whisper_service
+        from services.media_storage import MediaStorage
+        from services.vision_service import VisionUnavailableError, get_vision_service
+
+        if len(request.attachment_ids) > MAX_ATTACHMENTS_PER_MESSAGE:
+            raise HTTPException(
+                status_code=422,
+                detail=f"At most {MAX_ATTACHMENTS_PER_MESSAGE} attachments per message",
+            )
+
+        atts = (
+            await db.execute(
+                select(MessageAttachment).where(
+                    MessageAttachment.id.in_(request.attachment_ids)
+                )
+            )
+        ).scalars().all()
+        by_id = {a.id: a for a in atts}
+
+        img_index = 0
+        for att_id in request.attachment_ids:
+            att = by_id.get(att_id)
+            if not att:
+                raise HTTPException(status_code=404, detail=f"Attachment {att_id} not found")
+            if att.session_id != session.id:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Attachment {att_id} does not belong to this session",
+                )
+
+            # Reuse prior caption / transcript if already processed.
+            needs_processing = not (
+                att.status == "processed" and (att.description or att.transcript)
+            )
+            if needs_processing:
+                try:
+                    blob = MediaStorage().get(att.storage_key)
+                    if att.kind == "image":
+                        svc = get_vision_service(agent)
+                        if not svc:
+                            raise VisionUnavailableError("vision key not configured")
+                        att.description = await svc.describe_image(blob, att.mime_type)
+                    else:  # audio
+                        svc = get_whisper_service(agent)
+                        if not svc:
+                            raise WhisperUnavailableError("whisper key not configured")
+                        att.transcript = await svc.transcribe(
+                            blob,
+                            att.mime_type,
+                            language=(request.locale or "").split("-")[0] or None,
+                        )
+                    att.status = "processed"
+                    att.error_message = None
+                except (VisionUnavailableError, WhisperUnavailableError) as exc:
+                    att.status = "failed"
+                    att.error_message = str(exc)
+                    logger.warning("PR13 multimodal service unavailable: %s", exc)
+                except Exception as exc:
+                    att.status = "failed"
+                    att.error_message = f"{type(exc).__name__}: {exc}"
+                    logger.exception("PR13 multimodal processing failed for %s", att_id)
+
+            attachment_db_ids.append(att.id)
+
+            if att.kind == "image":
+                img_index += 1
+                text = att.description or _placeholder(att)
+                combined_text_extras.append(f"[image {img_index}: {text}]")
+            else:
+                text = att.transcript or _placeholder(att)
+                combined_text_extras.append(f"[audio: {text}]")
+
+            attachment_summaries.append({
+                "id": att.id,
+                "kind": att.kind,
+                "mime_type": att.mime_type,
+                "filename": att.filename,
+                "size_bytes": att.size_bytes,
+                "url": f"/api/v1/chat/attachments/{att.id}/content",
+                "status": att.status,
+                "transcript": att.transcript,
+                "description": att.description,
+                "duration_ms": att.duration_ms,
+                "error_message": att.error_message,
+                "created_at": att.created_at,
+            })
+
+        await db.commit()
+
+    combined_user_text = request.message
+    if combined_text_extras:
+        combined_user_text = request.message + "\n\n" + "\n".join(combined_text_extras)
+
+    # If every attachment failed because the service is unconfigured, tell
+    # the LLM to ask the visitor to describe or type it out.
+    if attachment_db_ids and all(
+        (a["error_message"] or "").endswith("not configured")
+        for a in attachment_summaries
+    ):
+        combined_user_text += (
+            "\n\n[System: image/audio description service is not configured for "
+            "this agent. Politely ask the visitor to describe what they see or "
+            "type the question directly instead of relying on the attachment.]"
+        )
+
     messages: List[Dict[str, str]] = []
     system_content = agent_system_prompt or "You are a helpful AI assistant."
     if kb_context:
@@ -962,7 +1093,8 @@ async def prepare_chat_request(
     messages.append({"role": "system", "content": system_content})
     if agent_enable_context and conversation_history:
         messages.extend(conversation_history)
-    messages.append({"role": "user", "content": request.message})
+    # PR13: combined_user_text folds in image descriptions + audio transcripts.
+    messages.append({"role": "user", "content": combined_user_text})
 
     llm = get_llm_service(
         use_mock=use_mock_llm,
@@ -984,6 +1116,10 @@ async def prepare_chat_request(
         "sources": kb_sources,  # Include KB sources for SSE event
         "temperature": temperature,
         "max_tokens": max_tokens,
+        # PR13: multimodal folds surfaced to the chat / chat_stream endpoints.
+        "combined_user_text": combined_user_text,
+        "attachments": attachment_summaries,
+        "attachment_db_ids": attachment_db_ids,
     }
 
 
@@ -1053,14 +1189,37 @@ async def persist_chat_response(
     sources: List[Dict[str, Any]],
     usage: Optional[Dict[str, int]],
     db: AsyncSession,
+    attachment_db_ids: Optional[List[str]] = None,
+    user_message_content: Optional[str] = None,
 ) -> ChatMessage:
-    """Persist a completed user/assistant exchange."""
+    """Persist a completed user/assistant exchange.
+
+    PR13:
+    - ``user_message_content`` overrides the literal ``request.message``
+      so multimodal folds (image description + audio transcript) are
+      persisted in the user message row.
+    - ``attachment_db_ids`` is FK-back-filled on the user message so the
+      attachments surface in history queries.
+    """
     user_message = ChatMessage(
         session_id=session.id,
         role="user",
-        content=request.message,
+        content=user_message_content if user_message_content is not None else request.message,
     )
     db.add(user_message)
+    await db.flush()   # populate user_message.id for the FK back-fill below
+
+    if attachment_db_ids:
+        from sqlalchemy import update
+
+        await db.execute(
+            update(MessageAttachment)
+            .where(
+                MessageAttachment.id.in_(attachment_db_ids),
+                MessageAttachment.session_id == session.id,
+            )
+            .values(message_id=user_message.id)
+        )
 
     assistant_message = ChatMessage(
         session_id=session.id,
@@ -1185,6 +1344,11 @@ async def chat(
         temperature = chat_context["temperature"]
         max_tokens = chat_context["max_tokens"]
         use_mock_llm = chat_context["use_mock_llm"]
+        # PR13: multimodal folds (combined_user_text folds in image descriptions
+        # + audio transcripts; attachments are surfaced to the response).
+        combined_user_text = chat_context.get("combined_user_text")
+        attachments_payload = chat_context.get("attachments", [])
+        attachment_db_ids = chat_context.get("attachment_db_ids", [])
 
         # Restricted reply config for graceful LLM failure fallback
         _agent = chat_context["agent"]
@@ -1250,8 +1414,14 @@ async def chat(
             sources=sources,
             usage=usage,
             db=persist_db,
+            attachment_db_ids=attachment_db_ids,
+            user_message_content=combined_user_text,
         )
-        await publish_chat_response(session_obj, request.message, reply)
+        await publish_chat_response(
+            session_obj, combined_user_text or request.message, reply
+        )
+
+    from api.v1.schemas import AttachmentResponse
 
     return ChatResponse(
         reply=reply,
@@ -1259,6 +1429,7 @@ async def chat(
         usage=usage,
         session_id=session_public_id,
         message_id=assistant_message.id,
+        attachments=[AttachmentResponse(**a) for a in attachments_payload],
     )
 
 
@@ -1323,6 +1494,10 @@ async def chat_stream(
                 temperature = chat_context["temperature"]
                 max_tokens = chat_context["max_tokens"]
                 use_mock_llm = chat_context["use_mock_llm"]
+                # PR13: multimodal folds (see prepare_chat_request).
+                combined_user_text = chat_context.get("combined_user_text")
+                attachments_payload = chat_context.get("attachments", [])
+                attachment_db_ids = chat_context.get("attachment_db_ids", [])
 
                 # Restricted reply config for graceful LLM failure fallback
                 _agent = chat_context["agent"]
@@ -1485,8 +1660,12 @@ async def chat_stream(
                     sources=sources,
                     usage=usage,
                     db=persist_db,
+                    attachment_db_ids=attachment_db_ids,
+                    user_message_content=combined_user_text,
                 )
-                await publish_chat_response(session_obj, request.message, reply)
+                await publish_chat_response(
+                    session_obj, combined_user_text or request.message, reply
+                )
                 yield sse_event(
                     "done",
                     {
@@ -1494,6 +1673,9 @@ async def chat_stream(
                         "session_id": session_public_id,
                         "usage": usage,
                         "taken_over": False,
+                        # PR13: surface resolved attachments so the widget can
+                        # render <img>/<audio> without a follow-up GET.
+                        "attachments": attachments_payload,
                     },
                 )
             except OperationalError as error:
@@ -1569,6 +1751,31 @@ async def get_chat_messages(
     )
     messages = result.scalars().all()
 
+    # PR13: one extra query to load attachments for these messages, keyed by
+    # message_id. Avoids N+1 and keeps the response shape flat.
+    atts_by_msg: dict[int, list] = {}
+    if messages:
+        msg_ids = [m.id for m in messages]
+        atts_result = await db.execute(
+            select(MessageAttachment)
+            .where(MessageAttachment.message_id.in_(msg_ids))
+            .order_by(MessageAttachment.created_at.asc())
+        )
+        for a in atts_result.scalars().all():
+            atts_by_msg.setdefault(a.message_id, []).append({
+                "id": a.id,
+                "kind": a.kind,
+                "mime_type": a.mime_type,
+                "filename": a.filename,
+                "size_bytes": a.size_bytes,
+                "url": f"/api/v1/chat/attachments/{a.id}/content",
+                "status": a.status,
+                "transcript": a.transcript,
+                "description": a.description,
+                "duration_ms": a.duration_ms,
+                "error_message": a.error_message,
+            })
+
     return [
         {
             "id": msg.id,
@@ -1576,6 +1783,7 @@ async def get_chat_messages(
             "content": msg.content,
             "sources": msg.sources or [],
             "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            "attachments": atts_by_msg.get(msg.id, []),
         }
         for msg in messages
     ]

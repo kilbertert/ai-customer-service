@@ -1,11 +1,14 @@
 """API v1 Pydantic schemas"""
 
+import re
+
 from pydantic import AliasChoices, BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from urllib.parse import urlsplit
 
 from services.url_safety import validate_url_safe
+from config import ATTACHMENT_ID_PATTERN
 
 
 def normalize_widget_origin(origin: str) -> str:
@@ -46,6 +49,15 @@ class ChatRequest(BaseModel):
             "用于在 system prompt 中注入语言指令,强制 AI 用该语种回复。"
         ),
     )
+    attachment_ids: List[str] = Field(
+        default_factory=list,
+        max_length=3,
+        description=(
+            "PR13: 已通过 POST /api/v1/chat/attachments 预上传的 "
+            "MessageAttachment.id 列表(每项形如 att_<12 hex>)。"
+            "每条必须属于同一个 session/visitor;每轮最多 3 个。"
+        ),
+    )
     session_id: Optional[str] = Field(
         None, max_length=200, description="会话ID（用于多轮对话）"
     )
@@ -55,6 +67,48 @@ class ChatRequest(BaseModel):
     params: Optional[Dict[str, Any]] = Field(
         None, description="推理参数（temperature, max_tokens等）"
     )
+
+    @field_validator("attachment_ids")
+    @classmethod
+    def _validate_attachment_ids(cls, ids: List[str]) -> List[str]:
+        pattern = re.compile(ATTACHMENT_ID_PATTERN)
+        for x in ids:
+            if not isinstance(x, str) or not pattern.match(x):
+                raise ValueError(f"Invalid attachment id format: {x!r}")
+        return ids
+
+
+# PR13 — multimodal attachment response schemas (forward refs from ChatResponse).
+class AttachmentResponse(BaseModel):
+    """Public-facing attachment metadata returned by upload and embedded in chat responses."""
+
+    id: str
+    kind: Literal["image", "audio"]
+    mime_type: str
+    filename: str
+    size_bytes: int
+    url: str
+    status: Literal["pending", "processing", "processed", "failed"]
+    transcript: Optional[str] = None
+    description: Optional[str] = None
+    duration_ms: Optional[int] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AttachmentUploadResponse(BaseModel):
+    """Returned by POST /api/v1/chat/attachments."""
+
+    attachment: AttachmentResponse
+
+
+class AttachmentProcessResult(BaseModel):
+    """Internal: produced by ASR/vision services, fed into chat prep."""
+
+    description: Optional[str] = None
+    transcript: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class SourceItem(BaseModel):
@@ -84,6 +138,11 @@ class ChatResponse(BaseModel):
     session_id: Optional[str] = Field(None, description="会话ID")
     message_id: Optional[int] = Field(None, description="消息ID")
     taken_over: bool = Field(False, description="会话是否已被人工接管")
+    # PR13: resolved attachments for the user turn (post-vision/ASR).
+    attachments: List[AttachmentResponse] = Field(
+        default_factory=list,
+        description="已解析的附件(image / audio)。客户端可据此渲染。",
+    )
 
 
 class ContextRequest(BaseModel):

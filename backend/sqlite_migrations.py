@@ -183,6 +183,69 @@ def run_sqlite_migrations(database_url: str) -> None:
                     f"✓ Backfilled workspace_quotas.max_urls for "
                     f"{cursor.rowcount} row(s)"
                 )
+            # multimodal chat (PR13) — column reserved; daily MB cap NOT
+            # enforced in PR13 (follow-up).
+            _ensure_columns(
+                cursor,
+                "workspace_quotas",
+                [
+                    ("max_attachment_mb_per_day", "INTEGER DEFAULT 50"),
+                    ("used_attachment_mb_today", "FLOAT DEFAULT 0.0"),
+                ],
+            )
+
+        # ── message_attachments (PR13) ──────────────────────────────────────
+        if _table_exists(cursor, "agents"):
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS message_attachments (
+                    id VARCHAR(50) PRIMARY KEY,
+                    message_id INTEGER,
+                    session_id VARCHAR(50),
+                    agent_id VARCHAR(50) NOT NULL,
+                    kind VARCHAR(10) NOT NULL,
+                    mime_type VARCHAR(100) NOT NULL,
+                    filename VARCHAR(500) NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    storage_key VARCHAR(200) NOT NULL UNIQUE,
+                    sha256 VARCHAR(64) NOT NULL,
+                    transcript TEXT,
+                    description TEXT,
+                    duration_ms INTEGER,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    error_message TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME,
+                    FOREIGN KEY(message_id) REFERENCES chat_messages(id),
+                    FOREIGN KEY(session_id) REFERENCES chat_sessions(id),
+                    FOREIGN KEY(agent_id) REFERENCES agents(id)
+                )
+                """
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS ix_message_attachments_message_id "
+                "ON message_attachments(message_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS ix_message_attachments_session_id "
+                "ON message_attachments(session_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS ix_message_attachments_agent_id "
+                "ON message_attachments(agent_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS ix_message_attachments_sha256 "
+                "ON message_attachments(sha256)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS ix_message_attachments_status "
+                "ON message_attachments(status)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS ix_msg_attach_session_kind "
+                "ON message_attachments(session_id, kind)"
+            )
 
         # ── admin_users role migration ─────────────────────────────────────
         if _table_exists(cursor, "admin_users"):
@@ -347,6 +410,14 @@ def _migrate_agents(cursor: sqlite3.Cursor):
         ("provider_config", "TEXT"),
         # embedding
         ("siliconflow_api_key", "VARCHAR(500) DEFAULT ''"),
+        # multimodal chat (PR13) — image captioning + voice transcription
+        ("vision_api_key", "VARCHAR(500) DEFAULT ''"),
+        ("vision_base_url", "VARCHAR(500) DEFAULT 'https://api.openai.com/v1'"),
+        ("vision_provider_type", "VARCHAR(20) DEFAULT 'openai'"),
+        ("vision_model", "VARCHAR(100) DEFAULT 'gpt-4o'"),
+        ("whisper_api_key", "VARCHAR(500) DEFAULT ''"),
+        ("whisper_base_url", "VARCHAR(500) DEFAULT 'https://api.openai.com/v1'"),
+        ("whisper_model", "VARCHAR(100) DEFAULT 'whisper-1'"),
         ("embedding_provider", "VARCHAR(20)"),
         ("embedding_api_base", "VARCHAR(500)"),
         ("embedding_model", "VARCHAR(100) DEFAULT 'jina-embeddings-v3'"),
