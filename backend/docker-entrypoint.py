@@ -174,6 +174,7 @@ def validate_secret_key():
 
 def migrate_sqlite_schema():
     """Apply lightweight SQLite migrations for newly added columns and indexes."""
+    import traceback
     from sqlite_migrations import run_sqlite_migrations
 
     database_url = os.environ.get("DATABASE_URL", "")
@@ -182,6 +183,7 @@ def migrate_sqlite_schema():
         print("SQLite migration check completed")
     except Exception as e:
         print(f"SQLite migration failed: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 

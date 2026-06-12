@@ -195,57 +195,99 @@ def run_sqlite_migrations(database_url: str) -> None:
             )
 
         # ── message_attachments (PR13) ──────────────────────────────────────
+        # NOTE: PR13 实际产线 schema 跟旧版 CREATE TABLE IF NOT EXISTS 不一致:
+        # 新增 storage_backend / ocr_text / modality_meta 三列,删了 session_id。
+        # 表已存在时 IF NOT EXISTS 不会重写,旧版的"session_id" 索引在缺列
+        # 的表上会炸("no such column: session_id")。修法是先建表(不补列),
+        # 索引逐个检查列存在再建,缺列就跳过。
         if _table_exists(cursor, "agents"):
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS message_attachments (
                     id VARCHAR(50) PRIMARY KEY,
                     message_id INTEGER,
-                    session_id VARCHAR(50),
                     agent_id VARCHAR(50) NOT NULL,
-                    kind VARCHAR(10) NOT NULL,
-                    mime_type VARCHAR(100) NOT NULL,
-                    filename VARCHAR(500) NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    storage_key VARCHAR(200) NOT NULL UNIQUE,
+                    kind VARCHAR(5) NOT NULL,
+                    mime_type VARCHAR(120) NOT NULL,
+                    filename VARCHAR(500),
+                    size_bytes INTEGER,
+                    storage_backend VARCHAR(20) NOT NULL DEFAULT 'local',
+                    storage_key VARCHAR(500) NOT NULL,
                     sha256 VARCHAR(64) NOT NULL,
                     transcript TEXT,
-                    description TEXT,
-                    duration_ms INTEGER,
-                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    ocr_text TEXT,
+                    modality_meta JSON,
+                    status VARCHAR(10) NOT NULL DEFAULT 'pending',
                     error_message TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME,
-                    FOREIGN KEY(message_id) REFERENCES chat_messages(id),
-                    FOREIGN KEY(session_id) REFERENCES chat_sessions(id),
-                    FOREIGN KEY(agent_id) REFERENCES agents(id)
+                    updated_at DATETIME
                 )
                 """
             )
+
+        if _table_exists(cursor, "message_attachments"):
+            for index_col, index_name in (
+                ("message_id", "ix_message_attachments_message_id"),
+                ("agent_id", "ix_message_attachments_agent_id"),
+            ):
+                cursor.execute(
+                    f"SELECT 1 FROM pragma_table_info('message_attachments') "
+                    f"WHERE name = ?",
+                    (index_col,),
+                )
+                if cursor.fetchone():
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS {index_name} "
+                        f"ON message_attachments({index_col})"
+                    )
+                # 列不存在(更老/更新的 schema)就跳过,等真用上再加
+            # session_id 索引单独看 —— 旧 schema 有,新 PR13 schema 删了。
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS ix_message_attachments_message_id "
-                "ON message_attachments(message_id)"
+                "SELECT 1 FROM pragma_table_info('message_attachments') "
+                "WHERE name = 'session_id'"
             )
+            if cursor.fetchone():
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_message_attachments_session_id "
+                    "ON message_attachments(session_id)"
+                )
+            else:
+                # PR13 起 session_id 不再在 message_attachments 上,索引跳过。
+                # 若 session_id 真要索引化(在 chat_sessions / chat_messages
+                # 上),在对应的 PR migration 里再加。
+                pass
+
+            # 其它索引:逐列检查 —— 老 / 新 schema 列不一样,缺列就跳过
+            # (CREATE INDEX 缺列会 "no such column",跟 PR13 一样的根因)。
+            for index_name, index_cols in (
+                ("ix_message_attachments_sha256", ("sha256",)),
+                ("ix_message_attachments_status", ("status",)),
+            ):
+                if all(
+                    cursor.execute(
+                        "SELECT 1 FROM pragma_table_info('message_attachments') "
+                        "WHERE name = ?",
+                        (col,),
+                    ).fetchone()
+                    for col in index_cols
+                ):
+                    cols_csv = ", ".join(index_cols)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS {index_name} "
+                        f"ON message_attachments({cols_csv})"
+                    )
+
+            # session_id + kind 复合索引:需要 session_id 列;新 PR13 schema
+            # 没这列就跳过。
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS ix_message_attachments_session_id "
-                "ON message_attachments(session_id)"
+                "SELECT 1 FROM pragma_table_info('message_attachments') "
+                "WHERE name IN ('session_id', 'kind')"
             )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS ix_message_attachments_agent_id "
-                "ON message_attachments(agent_id)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS ix_message_attachments_sha256 "
-                "ON message_attachments(sha256)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS ix_message_attachments_status "
-                "ON message_attachments(status)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS ix_msg_attach_session_kind "
-                "ON message_attachments(session_id, kind)"
-            )
+            if {row[0] for row in cursor.fetchall()} == {"session_id", "kind"}:
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_msg_attach_session_kind "
+                    "ON message_attachments(session_id, kind)"
+                )
 
         # ── admin_users role migration ─────────────────────────────────────
         if _table_exists(cursor, "admin_users"):
