@@ -43,6 +43,20 @@ type Dictionary = {
   newMessage: string;
   thinking: string;
   references: string;
+  // ---- PR14: image picker + voice recorder (13) ----
+  attachImage: string;
+  attachImageTitle: string;
+  recordAudio: string;
+  recordAudioTitle: string;
+  attachmentUnsupported: string;
+  attachmentTooLarge: string;
+  recordingUnsupported: string;
+  micPermissionDenied: string;
+  recordingCapReached: string;
+  attachmentStatusUploading: string;
+  attachmentStatusReady: string;
+  attachmentStatusError: string;
+  attachmentRemove: string;
 };
 
 export const LOCALES: Record<WidgetLocale, Dictionary> = {
@@ -61,6 +75,20 @@ export const LOCALES: Record<WidgetLocale, Dictionary> = {
     newMessage: "新消息",
     thinking: "思考中...",
     references: "参考来源",
+    // ---- PR14: image picker + voice recorder ----
+    attachImage: "添加图片",
+    attachImageTitle: "添加图片（最多 5MB）",
+    recordAudio: "录音",
+    recordAudioTitle: "按住录音（最长 60 秒）",
+    attachmentUnsupported: "不支持的文件格式",
+    attachmentTooLarge: "文件过大",
+    recordingUnsupported: "当前浏览器不支持录音",
+    micPermissionDenied: "无法访问麦克风，请检查权限",
+    recordingCapReached: "录音已达 60 秒上限",
+    attachmentStatusUploading: "上传中…",
+    attachmentStatusReady: "已就绪",
+    attachmentStatusError: "上传失败",
+    attachmentRemove: "移除",
   },
   "en-US": {
     languageSelectorLabel: "Language",
@@ -78,6 +106,20 @@ export const LOCALES: Record<WidgetLocale, Dictionary> = {
     newMessage: "New message",
     thinking: "Thinking...",
     references: "References",
+    // ---- PR14: image picker + voice recorder ----
+    attachImage: "Attach image",
+    attachImageTitle: "Attach image (max 5 MB)",
+    recordAudio: "Record audio",
+    recordAudioTitle: "Press and hold to record (max 60 s)",
+    attachmentUnsupported: "Unsupported file format",
+    attachmentTooLarge: "File too large",
+    recordingUnsupported: "Recording not supported in this browser",
+    micPermissionDenied: "Microphone access denied",
+    recordingCapReached: "Recording reached 60 s limit",
+    attachmentStatusUploading: "Uploading…",
+    attachmentStatusReady: "Ready",
+    attachmentStatusError: "Upload failed",
+    attachmentRemove: "Remove",
   },
   "vi-VN": {
     languageSelectorLabel: "Ngôn ngữ",
@@ -95,6 +137,20 @@ export const LOCALES: Record<WidgetLocale, Dictionary> = {
     newMessage: "Tin nhắn mới",
     thinking: "Đang suy nghĩ...",
     references: "Nguồn tham khảo",
+    // ---- PR14: image picker + voice recorder ----
+    attachImage: "Đính kèm hình ảnh",
+    attachImageTitle: "Đính kèm ảnh (tối đa 5 MB)",
+    recordAudio: "Ghi âm",
+    recordAudioTitle: "Nhấn giữ để ghi âm (tối đa 60 giây)",
+    attachmentUnsupported: "Định dạng tệp không được hỗ trợ",
+    attachmentTooLarge: "Tệp quá lớn",
+    recordingUnsupported: "Trình duyệt không hỗ trợ ghi âm",
+    micPermissionDenied: "Không thể truy cập micro",
+    recordingCapReached: "Đã đạt giới hạn 60 giây",
+    attachmentStatusUploading: "Đang tải lên…",
+    attachmentStatusReady: "Sẵn sàng",
+    attachmentStatusError: "Tải lên thất bại",
+    attachmentRemove: "Xóa",
   },
 };
 

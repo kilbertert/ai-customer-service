@@ -36,6 +36,10 @@ interface ChatMessage {
   content: string;
   sources?: Source[];
   timestamp: Date;
+  // PR14: attachments surfaced in the user message bubble. Server returns
+  // the canonical post-process values via SSE `done.attachments`; the widget
+  // also patches `preview_url` for local blob: previews before upload completes.
+  attachments?: Attachment[];
 }
 
 interface Source {
@@ -47,10 +51,26 @@ interface Source {
   id?: string;
 }
 
+type AttachmentKind = 'image' | 'audio';
+
+interface Attachment {
+  id: string;                       // '' for pre-upload local-only
+  kind: AttachmentKind;
+  mime_type: string;
+  filename: string;
+  size_bytes: number;
+  url: string;                      // '' pre-upload; server URL after
+  status: 'pending' | 'uploaded';
+  preview_url: string;              // blob: URL (image only)
+  duration_ms?: number;              // audio only
+}
+
 interface StreamDoneMeta {
   message_id?: number | null;
   session_id?: string;
   taken_over?: boolean;
+  // PR14: server-side echo of resolved attachment metadata.
+  attachments?: Attachment[];
 }
 
 interface StreamErrorPayload {
@@ -64,11 +84,42 @@ interface StreamEventPayload {
   elapsed?: number;
 }
 
+interface PendingAttachment {
+  clientId: string;                 // local-only UUID for DOM keying
+  kind: AttachmentKind;
+  mimeType: string;
+  filename: string;
+  size: number;
+  file?: File;                      // image
+  chunks?: Blob[];                  // audio
+  previewUrl: string;               // blob: URL (image only)
+  status: 'pending' | 'uploading' | 'uploaded' | 'error';
+  attachmentId: string;             // '' until upload returns
+  serverUrl: string;                // '' until upload returns
+  errorMessage: string;
+  durationMs?: number;              // audio only
+}
+
 interface ChatHistoryMessage {
   id: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
   sources?: Source[];
+  // PR14: backend /api/v1/chat/messages response shape (PR13 already returns this).
+  attachments?: Array<{
+    id: string;
+    kind: AttachmentKind;
+    mime_type: string;
+    filename: string;
+    size_bytes: number;
+    url: string;
+    status: string;
+    transcript: string | null;
+    description: string | null;
+    duration_ms: number | null;
+    error_message: string | null;
+    created_at: string;
+  }>;
 }
 
 function formatAssistantMessage(content: string, sources: Source[] = []): { content: string; references: Array<{ title: string; url: string }> } {
@@ -247,6 +298,22 @@ class BasjooWidget {
   // PR12: visitor's chosen widget language (independent from admin's basjoo_locale).
   private widgetLocale: WidgetLocale = DEFAULT_LOCALE;
   private _localeChangeListener: (() => void) | null = null;
+
+  // PR14: visitor-side attachment state (two-phase upload → SSE stream).
+  private pendingAttachments: PendingAttachment[] = [];
+  private attachmentsStripEl: HTMLDivElement | null = null;
+  private attachBtnEl: HTMLButtonElement | null = null;
+  private micBtnEl: HTMLButtonElement | null = null;
+  private fileInputEl: HTMLInputElement | null = null;
+  private _attachBtnClickListener: (() => void) | null = null;
+  private _micBtnPressListener: ((e: PointerEvent) => void) | null = null;
+  private _micBtnReleaseListener: ((e: PointerEvent) => void) | null = null;
+  private _fileInputChangeListener: ((e: Event) => void) | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private mediaStream: MediaStream | null = null;
+  private recordingStartedAt: number = 0;
+  private recordingMaxTimerId: number | null = null;
+  private recordingState: 'idle' | 'recording' = 'idle';
 
   constructor(config: WidgetConfig) {
     const apiBase = this.detectApiBase(config.apiBase);
@@ -480,6 +547,17 @@ class BasjooWidget {
             content: message.content,
             sources: message.sources,
             timestamp: new Date(),
+            attachments: (message.attachments || []).map((a) => ({
+              id: a.id,
+              kind: a.kind,
+              mime_type: a.mime_type,
+              filename: a.filename,
+              size_bytes: a.size_bytes,
+              url: a.url,
+              status: 'uploaded',
+              preview_url: '',
+              duration_ms: a.duration_ms ?? undefined,
+            })),
           });
           if (message.id > this.lastMessageId) {
             this.lastMessageId = message.id;
@@ -1051,6 +1129,44 @@ class BasjooWidget {
         color: ${textColor};
       }
 
+      /* PR14: input bar wrapper */
+      .basjoo-input-bar { display: flex; flex-direction: column; flex-shrink: 0; background: ${bgColor}; }
+      .basjoo-attachments-strip {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        padding: 10px 20px 0 20px;
+        border-top: 1px solid ${borderColor}; background: ${inputBg};
+        max-height: 140px; overflow-y: auto;
+      }
+      .basjoo-attachment-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 4px 8px 4px 4px; background: ${messageBg};
+        border: 1px solid ${borderColor}; border-radius: 18px;
+        font-size: 12px; color: ${textColor}; max-width: 220px;
+      }
+      .basjoo-attachment-chip .basjoo-attachment-thumb { width: 28px; height: 28px; object-fit: cover; border-radius: 14px; flex-shrink: 0; }
+      .basjoo-attachment-chip audio { height: 28px; max-width: 140px; }
+      .basjoo-attachment-chip .basjoo-attachment-chip-meta { display: flex; flex-direction: column; min-width: 0; }
+      .basjoo-attachment-chip .basjoo-attachment-chip-filename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+      .basjoo-attachment-chip .basjoo-attachment-chip-status { font-size: 10px; color: ${mutedColor}; }
+      .basjoo-attachment-chip .basjoo-attachment-chip-status[data-status="error"] { color: #ef4444; }
+      .basjoo-attachment-chip .basjoo-attachment-chip-remove { border: 0; background: transparent; color: ${mutedColor}; cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
+      .basjoo-attachment-chip .basjoo-attachment-chip-remove:hover { color: #ef4444; }
+      .basjoo-attach, .basjoo-mic {
+        width: 40px; height: 40px; border: 1px solid ${borderColor}; border-radius: 50%;
+        background: transparent; color: ${mutedColor}; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        transition: all 0.2s;
+      }
+      .basjoo-attach:hover, .basjoo-mic:hover { border-color: ${this.config.themeColor}; color: ${this.config.themeColor}; }
+      .basjoo-mic.basjoo-mic--recording { background: #ef4444; color: white; border-color: #ef4444; animation: basjoo-mic-pulse 1s ease-in-out infinite; }
+      @keyframes basjoo-mic-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+        50%      { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+      }
+      .basjoo-message-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-self: flex-end; }
+      .basjoo-message-attachment-thumb { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; }
+      .basjoo-message-attachment-audio { width: 220px; height: 36px; }
+
       @media (max-width: 480px) {
         #basjoo-chat-window {
           width: calc(100vw - 32px);
@@ -1175,15 +1291,34 @@ class BasjooWidget {
         </button>
       </div>
       <div class="basjoo-messages"></div>
-      <div class="basjoo-input-area">
-        <input type="text" class="basjoo-input" placeholder="${safePlaceholder}" maxlength="2000">
-        <button class="basjoo-send">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+      <div class="basjoo-input-bar">
+        <div class="basjoo-attachments-strip" hidden></div>
+        <div class="basjoo-input-area">
+          <button type="button" class="basjoo-attach" aria-label="${t(this.widgetLocale,'attachImage')}" title="${t(this.widgetLocale,'attachImageTitle')}">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </button>
+          <button type="button" class="basjoo-mic" aria-label="${t(this.widgetLocale,'recordAudio')}" title="${t(this.widgetLocale,'recordAudioTitle')}">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="3" width="6" height="12" rx="3" />
+              <path d="M5 11a7 7 0 0 0 14 0" />
+              <line x1="12" y1="18" x2="12" y2="22" />
+              <line x1="8" y1="22" x2="16" y2="22" />
+            </svg>
+          </button>
+          <input type="text" class="basjoo-input" placeholder="${safePlaceholder}" maxlength="2000">
+          <button class="basjoo-send">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
       </div>
+      <input type="file" class="basjoo-hidden-file-input" accept="image/jpeg,image/png,image/webp" hidden>
     `;
 
     const closeBtn = this.chatWindow.querySelector('.basjoo-close') as HTMLElement;
@@ -1213,6 +1348,38 @@ class BasjooWidget {
       if (e.key === 'Enter') this._sendBtnClickListener?.();
     };
     input.addEventListener('keypress', this._inputKeypressListener);
+
+    // PR14: image picker + voice recorder.
+    this.attachmentsStripEl = this.chatWindow.querySelector('.basjoo-attachments-strip') as HTMLDivElement;
+    this.attachBtnEl = this.chatWindow.querySelector('.basjoo-attach') as HTMLButtonElement;
+    this.micBtnEl = this.chatWindow.querySelector('.basjoo-mic') as HTMLButtonElement;
+    this.fileInputEl = this.chatWindow.querySelector('.basjoo-hidden-file-input') as HTMLInputElement;
+
+    this._attachBtnClickListener = () => this.fileInputEl?.click();
+    this.attachBtnEl.addEventListener('click', this._attachBtnClickListener);
+
+    this._fileInputChangeListener = (e: Event) => {
+      const input = e.target as HTMLInputElement;
+      if (!input.files) return;
+      for (const file of Array.from(input.files)) {
+        void this._addPendingAttachment(file);
+      }
+      input.value = ''; // reset so the same file can be re-picked
+    };
+    this.fileInputEl.addEventListener('change', this._fileInputChangeListener);
+
+    this._micBtnPressListener = (e) => { e.preventDefault(); void this._startRecording(); };
+    this._micBtnReleaseListener = (e) => {
+      e.preventDefault();
+      if (this.recordingState === 'recording') {
+        void this._stopRecording();
+      }
+      // pointercancel / pointerleave while not yet recording → no-op
+    };
+    this.micBtnEl.addEventListener('pointerdown', this._micBtnPressListener);
+    this.micBtnEl.addEventListener('pointerup', this._micBtnReleaseListener);
+    this.micBtnEl.addEventListener('pointercancel', this._micBtnReleaseListener);
+    this.micBtnEl.addEventListener('pointerleave', this._micBtnReleaseListener);
 
     // PR12: language selector — sits in the header, between title and close (D15).
     const header = this.chatWindow.querySelector('.basjoo-header') as HTMLElement;
@@ -1291,7 +1458,18 @@ class BasjooWidget {
    * (PR12 — driven by `this.widgetLocale`, NOT by `getRequestLocale()` so the
    * selector value wins over the auto-detected `config.language`).
    */
-  private getText(key: 'sendFailed' | 'networkError' | 'quotaExceeded' | 'takenOverNotice' | 'inputPlaceholder' | 'messageTooLong' | 'greetingBubble' | 'newMessage' | 'thinking' | 'references' | 'languageSelectorLabel' | 'optionZh' | 'optionEn' | 'optionVi'): string {
+  private getText(
+    key:
+      | 'sendFailed' | 'networkError' | 'quotaExceeded' | 'takenOverNotice'
+      | 'inputPlaceholder' | 'messageTooLong' | 'greetingBubble' | 'newMessage'
+      | 'thinking' | 'references' | 'languageSelectorLabel'
+      | 'optionZh' | 'optionEn' | 'optionVi'
+      | 'attachImage' | 'attachImageTitle' | 'recordAudio' | 'recordAudioTitle'
+      | 'attachmentUnsupported' | 'attachmentTooLarge'
+      | 'recordingUnsupported' | 'micPermissionDenied' | 'recordingCapReached'
+      | 'attachmentStatusUploading' | 'attachmentStatusReady' | 'attachmentStatusError'
+      | 'attachmentRemove'
+  ): string {
     return t(this.widgetLocale, key)
   }
 
@@ -1340,11 +1518,320 @@ class BasjooWidget {
     if (bubble) {
       bubble.textContent = t(this.widgetLocale, 'greetingBubble')
     }
+    // PR14: re-render the pending-attachments strip so localized strings refresh.
+    if (this.attachmentsStripEl) {
+      this.renderPendingStrip()
+    }
   }
 
   /**
    * 将纯文本安全转义为HTML
    */
+  // ---- PR14: image picker + voice recorder (helper methods) ----
+
+  private _addPendingAttachment(file: File): void {
+    const allowedImage = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowedImage.has(file.type)) {
+      this.showError(this.getText('attachmentUnsupported'));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.showError(this.getText('attachmentTooLarge'));
+      return;
+    }
+    const clientId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : 'c_' + Math.random().toString(36).slice(2);
+    const previewUrl = URL.createObjectURL(file);
+    this.pendingAttachments.push({
+      clientId,
+      kind: 'image',
+      mimeType: file.type,
+      filename: file.name || 'image',
+      size: file.size,
+      file,
+      previewUrl,
+      status: 'pending',
+      attachmentId: '',
+      serverUrl: '',
+      errorMessage: '',
+    });
+    this.renderPendingStrip();
+  }
+
+  private _removePendingAttachment(clientId: string): void {
+    const idx = this.pendingAttachments.findIndex((a) => a.clientId === clientId);
+    if (idx === -1) return;
+    const row = this.pendingAttachments[idx];
+    if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+    this.pendingAttachments.splice(idx, 1);
+    this.renderPendingStrip();
+  }
+
+  private renderPendingStrip(): void {
+    if (!this.attachmentsStripEl) return;
+    this.attachmentsStripEl.innerHTML = '';
+    if (this.pendingAttachments.length === 0) {
+      this.attachmentsStripEl.hidden = true;
+      return;
+    }
+    this.attachmentsStripEl.hidden = false;
+    for (const row of this.pendingAttachments) {
+      const chip = document.createElement('div');
+      chip.className = 'basjoo-attachment-chip basjoo-attachment-chip--' + row.status;
+      chip.setAttribute('data-client-id', row.clientId);
+      const safeUrl = this.sanitizeUrlAttribute(row.previewUrl || row.serverUrl);
+      if (row.kind === 'image' && safeUrl) {
+        const img = document.createElement('img');
+        img.className = 'basjoo-attachment-thumb';
+        img.src = safeUrl;
+        img.alt = row.filename;
+        chip.appendChild(img);
+      } else {
+        const dot = document.createElement('span');
+        dot.className = 'basjoo-attachment-kind-dot';
+        dot.textContent = '♪';
+        chip.appendChild(dot);
+      }
+      const meta = document.createElement('span');
+      meta.className = 'basjoo-attachment-chip-meta';
+      const fname = document.createElement('span');
+      fname.className = 'basjoo-attachment-chip-filename';
+      fname.textContent = row.filename;
+      meta.appendChild(fname);
+      const status = document.createElement('span');
+      status.className = 'basjoo-attachment-chip-status';
+      status.setAttribute('data-status', row.status);
+      status.textContent =
+        row.status === 'uploading'
+          ? this.getText('attachmentStatusUploading')
+          : row.status === 'uploaded'
+          ? this.getText('attachmentStatusReady')
+          : row.status === 'error'
+          ? (row.errorMessage || this.getText('attachmentStatusError'))
+          : '';
+      meta.appendChild(status);
+      chip.appendChild(meta);
+      if (row.status === 'uploaded' && row.serverUrl) {
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'metadata';
+        audio.src = this.sanitizeUrlAttribute(row.serverUrl);
+        audio.className = 'basjoo-attachment-audio';
+        chip.appendChild(audio);
+      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'basjoo-attachment-chip-remove';
+      remove.setAttribute('aria-label', this.getText('attachmentRemove'));
+      remove.textContent = '×';
+      remove.addEventListener('click', () => this._removePendingAttachment(row.clientId));
+      chip.appendChild(remove);
+      this.attachmentsStripEl.appendChild(chip);
+    }
+  }
+
+  private async uploadPendingAttachments(): Promise<string[]> {
+    const ids: string[] = [];
+    for (const row of this.pendingAttachments) {
+      if (row.status === 'uploaded' && row.attachmentId) {
+        ids.push(row.attachmentId);
+        continue;
+      }
+      row.status = 'uploading';
+      row.errorMessage = '';
+      this.renderPendingStrip();
+      const fd = new FormData();
+      if (row.file) {
+        fd.append('file', row.file, row.filename);
+      } else if (row.chunks && row.chunks.length) {
+        const blob = new Blob(row.chunks, { type: row.mimeType });
+        fd.append('file', blob, row.filename);
+      }
+      fd.append('agent_id', this.config.agentId);
+      fd.append('session_id', this.sessionId || '');
+      fd.append('visitor_id', this.visitorId);
+      if (row.durationMs) fd.append('duration_ms', String(row.durationMs));
+      try {
+        const res = await fetch(`${this.config.apiBase}/api/v1/chat/attachments`, {
+          method: 'POST',
+          body: fd,
+          signal: this.streamAbortController?.signal,
+        });
+        if (!res.ok) {
+          row.status = 'error';
+          row.errorMessage = `HTTP ${res.status}`;
+          ids.push('');
+        } else {
+          const data = await res.json();
+          const att = data && data.attachment;
+          if (att && typeof att.id === 'string') {
+            row.attachmentId = att.id;
+            row.serverUrl = att.url || '';
+            row.status = 'uploaded';
+            ids.push(att.id);
+          } else {
+            row.status = 'error';
+            row.errorMessage = 'malformed response';
+            ids.push('');
+          }
+        }
+      } catch (err) {
+        row.status = 'error';
+        row.errorMessage = (err as Error)?.message || 'upload failed';
+        ids.push('');
+      }
+      this.renderPendingStrip();
+    }
+    return ids;
+  }
+
+  private _clearSuccessfulPending(): void {
+    this.pendingAttachments = this.pendingAttachments.filter((row) => {
+      if (row.status === 'uploaded') {
+        if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+        return false;
+      }
+      return true;
+    });
+    this.renderPendingStrip();
+  }
+
+  private async _startRecording(): Promise<void> {
+    if (this.recordingState === 'recording') return;
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function' ||
+      typeof window === 'undefined' ||
+      typeof (window as any).MediaRecorder === 'undefined'
+    ) {
+      this.showError(this.getText('recordingUnsupported'));
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      this.showError(this.getText('micPermissionDenied'));
+      return;
+    }
+    this.mediaStream = stream;
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+    const supported = candidates.find(
+      (m) => (window as any).MediaRecorder.isTypeSupported(m)
+    ) || '';
+    const chunks: Blob[] = [];
+    const recorder = supported
+      ? new (window as any).MediaRecorder(stream, { mimeType: supported })
+      : new (window as any).MediaRecorder(stream);
+    recorder.ondataavailable = (e: BlobEvent) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+    const stopWaiter = new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+    });
+    this.mediaRecorder = recorder;
+    this.recordingStartedAt = Date.now();
+    this.recordingState = 'recording';
+    this.micBtnEl?.classList.add('basjoo-mic--recording');
+    this.recordingMaxTimerId = window.setTimeout(
+      () => void this._stopRecording(true),
+      60_000
+    );
+    try {
+      recorder.start(250);
+    } catch {
+      this.mediaStream?.getTracks().forEach((t) => t.stop());
+      this.mediaStream = null;
+      this.mediaRecorder = null;
+      this.recordingState = 'idle';
+      this.micBtnEl?.classList.remove('basjoo-mic--recording');
+      this.showError(this.getText('micPermissionDenied'));
+      return;
+    }
+    (recorder as any)._chunks = chunks;
+    (recorder as any)._stopWaiter = stopWaiter;
+  }
+
+  private async _stopRecording(capReached = false): Promise<void> {
+    if (this.recordingState !== 'recording') return;
+    const recorder = this.mediaRecorder;
+    const stream = this.mediaStream;
+    if (this.recordingMaxTimerId !== null) {
+      window.clearTimeout(this.recordingMaxTimerId);
+      this.recordingMaxTimerId = null;
+    }
+    this.recordingState = 'idle';
+    this.micBtnEl?.classList.remove('basjoo-mic--recording');
+    if (!recorder) return;
+    try {
+      try { recorder.requestData(); } catch { /* ignore */ }
+      const stopWaiter: Promise<void> | undefined = (recorder as any)._stopWaiter;
+      try { recorder.stop(); } catch { /* ignore */ }
+      if (stopWaiter) await stopWaiter;
+    } finally {
+      stream?.getTracks().forEach((t) => t.stop());
+      this.mediaStream = null;
+      this.mediaRecorder = null;
+    }
+    const chunks: Blob[] = ((recorder as any)._chunks) || [];
+    if (chunks.length === 0) {
+      if (capReached) this.showError(this.getText('recordingCapReached'));
+      return;
+    }
+    const mimeType = (recorder as any).mimeType || 'audio/webm';
+    const ts = this.recordingStartedAt || Date.now();
+    const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+    const filename = `recording-${ts}.${ext}`;
+    const clientId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : 'c_' + Math.random().toString(36).slice(2);
+    this.pendingAttachments.push({
+      clientId,
+      kind: 'audio',
+      mimeType,
+      filename,
+      size: chunks.reduce((n, b) => n + b.size, 0),
+      chunks,
+      previewUrl: '',
+      status: 'pending',
+      attachmentId: '',
+      serverUrl: '',
+      errorMessage: '',
+      durationMs: Date.now() - ts,
+    });
+    this.renderPendingStrip();
+    if (capReached) this.showError(this.getText('recordingCapReached'));
+  }
+
+  // ---- end PR14 helpers ----
+
+  private _rerenderLastUserMessage(): void {
+    const messagesEl = this.chatWindow?.querySelector('.basjoo-messages');
+    if (!messagesEl) return;
+    // The last appended user-message DOM element is the second-to-last child
+    // (the most-recent child is the streamingMessage placeholder if any). Find
+    // the user-role .basjoo-message containing the most recent timestamp.
+    const lastUserEl = Array.from(messagesEl.querySelectorAll('.basjoo-message-user'))
+      .pop() as HTMLElement | undefined;
+    if (!lastUserEl) return;
+    // Re-render by removing + re-creating. Cheap: at most a few chips.
+    const idx = this.messages.length - 1;
+    const last = this.messages[idx];
+    if (!last) return;
+    const replacement = this.createMessageElement(last);
+    lastUserEl.replaceWith(replacement);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   private escapeHtml(text: string): string {
     return text
       .replace(/&/g, '&amp;')
@@ -1356,12 +1843,17 @@ class BasjooWidget {
 
   /**
    * Sanitise a URL to be safe for use in an HTML attribute (e.g. src/href).
-   * Only allows http/https URLs and strips anything else.
+   * Allows http/https for server-served attachments and blob: for local
+   * previews produced by URL.createObjectURL. Anything else is stripped.
    */
   private sanitizeUrlAttribute(url: string): string {
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      if (
+        parsed.protocol === 'http:' ||
+        parsed.protocol === 'https:' ||
+        parsed.protocol === 'blob:'
+      ) {
         return this.escapeHtml(url);
       }
     } catch { /* invalid URL */ }
@@ -1467,6 +1959,34 @@ class BasjooWidget {
     }
 
     messageDiv.appendChild(contentDiv);
+
+    // PR14: render attachments (user bubble only). Assistant bubble skips
+    // this block because the assistant turn never sends inbound attachments.
+    if (message.attachments && message.attachments.length > 0 && message.role === 'user') {
+      const row = document.createElement('div');
+      row.className = 'basjoo-message-attachments';
+      for (const att of message.attachments) {
+        const safeUrl = this.sanitizeUrlAttribute(att.preview_url || att.url);
+        if (!safeUrl) continue;
+        if (att.kind === 'image') {
+          const img = document.createElement('img');
+          img.className = 'basjoo-message-attachment-thumb';
+          img.src = safeUrl;
+          img.alt = att.filename;
+          row.appendChild(img);
+        } else if (att.kind === 'audio') {
+          const audio = document.createElement('audio');
+          audio.className = 'basjoo-message-attachment-audio';
+          audio.controls = true;
+          audio.preload = 'metadata';
+          audio.src = safeUrl;
+          row.appendChild(audio);
+        }
+      }
+      if (row.children.length > 0) {
+        messageDiv.appendChild(row);
+      }
+    }
 
     const timeDiv = document.createElement('div');
     timeDiv.className = 'basjoo-message-time';
@@ -1730,6 +2250,17 @@ class BasjooWidget {
             content: msg.content,
             sources: msg.sources,
             timestamp: new Date(),
+            attachments: (msg.attachments || []).map((a) => ({
+              id: a.id,
+              kind: a.kind,
+              mime_type: a.mime_type,
+              filename: a.filename,
+              size_bytes: a.size_bytes,
+              url: a.url,
+              status: 'uploaded',
+              preview_url: '',
+              duration_ms: a.duration_ms ?? undefined,
+            })),
           });
           if (!this.isOpen) {
             this.startTitleBlink();
@@ -1814,6 +2345,17 @@ class BasjooWidget {
           }
           if (typeof donePayload.message_id === 'number' && donePayload.message_id > this.lastMessageId) {
             this.lastMessageId = donePayload.message_id;
+          }
+          // PR14: server-side echo of resolved attachment metadata.
+          if (Array.isArray(donePayload.attachments) && donePayload.attachments.length) {
+            for (const att of donePayload.attachments) {
+              const row = this.pendingAttachments.find((p) => p.attachmentId === att.id);
+              if (row) {
+                row.serverUrl = att.url || row.serverUrl;
+                row.status = 'uploaded';
+              }
+            }
+            this.renderPendingStrip();
           }
           if (donePayload.taken_over) {
             this.removeStreamingMessage();
@@ -1923,7 +2465,10 @@ class BasjooWidget {
   /**
    * 发送消息
    */
-  private async sendMessageWithRetry(message: string): Promise<void> {
+  private async sendMessageWithRetry(
+    message: string,
+    attachmentIds: string[] = []
+  ): Promise<void> {
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt <= 1; attempt++) {
@@ -1946,6 +2491,7 @@ class BasjooWidget {
             message,
             locale: this.getRequestLocale(),
             widget_locale: this.widgetLocale,
+            attachment_ids: attachmentIds.filter(Boolean),
             session_id: this.sessionId || undefined,
             visitor_id: this.visitorId,
             timezone: userTimezone,
@@ -2003,6 +2549,19 @@ class BasjooWidget {
       role: 'user',
       content: message,
       timestamp: new Date(),
+      // PR14: snapshot the local previews so the user bubble renders chips
+      // immediately; the resolve-to-server-url re-render happens after upload.
+      attachments: this.pendingAttachments.map((p) => ({
+        id: p.attachmentId,
+        kind: p.kind,
+        mime_type: p.mimeType,
+        filename: p.filename,
+        size_bytes: p.size,
+        url: p.serverUrl,
+        status: p.status === 'uploaded' ? 'uploaded' : 'pending',
+        preview_url: p.previewUrl,
+        duration_ms: p.durationMs,
+      })),
     });
 
     this.hideLoading();
@@ -2010,8 +2569,30 @@ class BasjooWidget {
     this.removeStreamingMessage();
     this.createStreamingMessage(true);
 
+    let attachmentIds: string[] = [];
     try {
-      await this.sendMessageWithRetry(message);
+      if (this.pendingAttachments.length > 0) {
+        attachmentIds = await this.uploadPendingAttachments();
+        // Patch the just-added user message with the now-resolved server URLs.
+        const last = this.messages[this.messages.length - 1];
+        if (last) {
+          last.attachments = this.pendingAttachments
+            .filter((p) => p.status === 'uploaded')
+            .map((p) => ({
+              id: p.attachmentId,
+              kind: p.kind,
+              mime_type: p.mimeType,
+              filename: p.filename,
+              size_bytes: p.size,
+              url: p.serverUrl,
+              status: 'uploaded',
+              preview_url: '',
+              duration_ms: p.durationMs,
+            }));
+          this._rerenderLastUserMessage();
+        }
+      }
+      await this.sendMessageWithRetry(message, attachmentIds);
     } catch (error: any) {
       console.error('[Basjoo Widget] Error sending message:', error);
 
@@ -2074,6 +2655,41 @@ class BasjooWidget {
     if (input && this._inputKeypressListener) {
       input.removeEventListener('keypress', this._inputKeypressListener);
     }
+
+    // PR14: cancel any active recording, then drop the 4 new listeners.
+    if (this.recordingState === 'recording') {
+      try { this.mediaRecorder?.stop(); } catch { /* ignore */ }
+      this.mediaStream?.getTracks().forEach((t) => t.stop());
+      if (this.recordingMaxTimerId !== null) {
+        window.clearTimeout(this.recordingMaxTimerId);
+        this.recordingMaxTimerId = null;
+      }
+      this.recordingState = 'idle';
+      this.mediaRecorder = null;
+      this.mediaStream = null;
+    }
+    for (const row of this.pendingAttachments) {
+      if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+    }
+    this.pendingAttachments = [];
+    if (this.attachBtnEl && this._attachBtnClickListener) {
+      this.attachBtnEl.removeEventListener('click', this._attachBtnClickListener);
+    }
+    if (this.micBtnEl && this._micBtnPressListener) {
+      this.micBtnEl.removeEventListener('pointerdown', this._micBtnPressListener);
+      if (this._micBtnReleaseListener) {
+        this.micBtnEl.removeEventListener('pointerup', this._micBtnReleaseListener);
+        this.micBtnEl.removeEventListener('pointercancel', this._micBtnReleaseListener);
+        this.micBtnEl.removeEventListener('pointerleave', this._micBtnReleaseListener);
+      }
+    }
+    if (this.fileInputEl && this._fileInputChangeListener) {
+      this.fileInputEl.removeEventListener('change', this._fileInputChangeListener);
+    }
+    this._attachBtnClickListener = null;
+    this._micBtnPressListener = null;
+    this._micBtnReleaseListener = null;
+    this._fileInputChangeListener = null;
     // PR12: drop the language-selector listener tracked separately.
     const localeSelect = this.chatWindow?.querySelector(
       '[data-basjoo-locale-select]'
