@@ -126,6 +126,7 @@ temp/
 # Local planning docs
 /docs/*
 !/docs/requirements-second-pass.md
+!/docs/operations.md
 
 # Local AI/code intelligence caches
 .pi-lens/cache/

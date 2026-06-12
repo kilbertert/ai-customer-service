@@ -1,0 +1,342 @@
+# basjoo 本地启动与日常运维手册
+
+> 范围:`fork/main` 之后的 **dev profile**(8 container,`docker compose --profile dev up -d`)。
+> 读者:本机 dev / 改代码自测的工程师。
+> 配套:`docs/requirements-second-pass.md` 写**改什么**,`CLAUDE.md` 写**架构**。
+> 生产部署走 `install-deploy.sh`,**不**用这份。
+
+---
+
+## 0. TL;DR
+
+```bash
+# 0. 国内网络(可选,见 §3.1)
+docker pull docker.m.daocloud.io/library/python:3.11-slim
+docker pull docker.m.daocloud.io/library/node:20-alpine
+docker tag docker.m.daocloud.io/library/python:3.11-slim python:3.11-slim
+docker tag docker.m.daocloud.io/library/node:20-alpine node:20-alpine
+
+# 1. 起
+docker compose --profile dev up -d
+
+# 2. 等 + 验
+curl localhost:8000/health   # → {"status":"healthy"}
+# admin:           http://localhost:3000
+# backend:         http://localhost:8000
+# widget demo:     http://localhost:8000/widget-demo  ← 模拟"客户网站"
+```
+
+---
+
+## 1. 端口与服务
+
+dev profile 8 container,**对外只暴露 3000 / 8000**:
+
+| 端口 | 服务 | 角色 |
+|------|------|------|
+| **3000** | `basjoo-frontend-dev` (Next.js) | **管理后台**:管理 agent / KB / 配置 |
+| **8000** | `basjoo-backend-dev` (FastAPI) | **后端 API + widget 静态资源** |
+| 8000/widget-demo | HTML demo 页(已嵌 sdk.js) | 模拟客户网站,自测 widget |
+| 8000/sdk.js | widget 嵌入脚本 (~45KB) | 给真实客户网站 `<script>` 引 |
+| 8000/api/v1/chat | 公开 chat JSON | widget SDK 调用 |
+| 8000/health | 健康检查 | 探针 / CI |
+| 6333 / 6379 / 5432 / 8001 | Qdrant / Redis / Postgres / Scrapling | **内部**,不走公网 |
+
+> 访客**不直接访问 basjoo**。访客在客户网站上,客户网站 `<script>` 加载 sdk.js,SDK 调 `/api/v1/chat`。basjoo **不托管访客页面**。
+
+---
+
+## 2. 前置依赖
+
+| 依赖 | 验证 |
+|------|------|
+| Docker Desktop ≥ 4.x(自带 Compose v2) | `docker --version` |
+| WSL2(Windows 强依赖) | `wsl --status` |
+| 8GB+ 可用内存 | `docker info` |
+| 浏览器 | — |
+
+> Python venv:`backend/venv_pr1/`(不是默认 `venv/`,见 §6.2)。
+
+---
+
+## 3. 首次启动
+
+### 3.1 镜像(国内网络)
+
+dev Dockerfile 是 `FROM python:3.11-slim` / `FROM node:20-alpine`,Docker Hub 拉不动则需手动 tag:
+
+```bash
+docker pull docker.m.daocloud.io/library/python:3.11-slim
+docker pull docker.m.daocloud.io/library/node:20-alpine
+docker tag docker.m.daocloud.io/library/python:3.11-slim python:3.11-slim
+docker tag docker.m.daocloud.io/library/node:20-alpine node:20-alpine
+```
+
+能直连 `docker.io/library/*` 的环境跳过。
+
+**永久方案**:Docker Desktop → Settings → Docker Engine → 加 `"registry-mirrors": ["https://docker.m.daocloud.io"]` → Apply & Restart。
+
+### 3.2 `.env` 与 LLM key
+
+`.env` 已 gitignore。dev profile 的 `backend-dev` 在 `docker-compose.yml:195-208` **显式列 env 变量**,**不**走 `env_file:`,改 `.env` 不会自动进容器。
+
+加全局 LLM key 两条路:
+1. **per-agent**(推荐):admin UI → agent 配置填,存 SQLite
+2. **env 注入**:改 `docker-compose.yml:195-208` 加 `${XXX_API_KEY:-}`,再 `up -d --build backend-dev`
+
+> **不要**把 key 贴在 AI 聊天 / Slack / GitHub issue 里(见 §6.4)。
+
+### 3.3 启动
+
+```bash
+docker compose --profile dev up -d
+docker compose --profile dev ps    # STATUS 绿后 OK
+```
+
+首次 `up -d` 触发 backend-dev / frontend-dev build(无本地镜像),3-6 分钟。`--watch` flag 开 watch 模式。
+
+### 3.4 默认 admin
+
+`init_db()` 首次跑会建 `me@example.com` / `platform_admin`(无密码)。
+
+**当前 dev 实例**(本机 smoke test 已重置):
+- `me@example.com` / `smokepass123` / `super_admin`
+
+新机器或 reset 后:用 §5.2 走 SQLite 重置,或进 admin UI 注册新账号。
+
+---
+
+## 4. 日常操作
+
+### 4.1 起停
+
+| 操作 | 命令 |
+|------|------|
+| 起 | `docker compose --profile dev up -d` |
+| 停(保 volumes) | `docker compose --profile dev down` |
+| 停 + 删 volumes(数据全清) | `docker compose --profile dev down -v` |
+| 重启单 service | `docker compose --profile dev restart backend-dev` |
+| 改依赖 / Dockerfile 后 | `docker compose --profile dev up -d --build backend-dev frontend-dev` |
+
+### 4.2 日志
+
+```bash
+docker compose --profile dev logs -f                       # 全部
+docker logs -f basjoo-backend-dev                          # 单个
+docker logs --tail 100 basjoo-backend-dev | grep -iE "error|exception"
+```
+
+### 4.3 进 container 调试
+
+```bash
+docker exec -it basjoo-backend-dev bash
+docker exec basjoo-backend-dev python3 -c "
+import sqlite3
+con = sqlite3.connect('/app/data/basjoo.db')
+for r in con.execute('SELECT id,email,role FROM admin_users'): print(r)
+"
+docker exec basjoo-backend-dev curl -s localhost:8000/health   # 内部调,躲宿主侧限流
+```
+
+### 4.4 改代码循环
+
+| 改了 | rebuild? | 重启 |
+|------|---------|------|
+| `backend/**/*.py` 业务代码 | 否 | watch mode 自动,或 `restart backend-dev` |
+| `backend/requirements.txt` / `Dockerfile.dev` | **是** | `up -d --build backend-dev` |
+| `services/__init__.py` / 新顶层 module | 否(但 reload 不重 import) | **`restart backend-dev`** |
+| `frontend-nextjs/**` 业务代码 | 否 | Next.js HMR 自动 |
+| `frontend-nextjs/package.json` | **是** | 重建 frontend-dev |
+| `nginx/**` | 否(挂卷) | `restart nginx` |
+| `docker-compose.yml` | 否 | `up -d`(重 plan) |
+| `widget/src/**` | 否(产物 `backend/static/sdk.js` bind-mount) | `restart backend-dev` 让缓存失效 |
+
+### 4.5 smoke test
+
+5 步全 200 即健康:
+
+```bash
+curl -s -o /dev/null -w "health:     %{http_code}\n" localhost:8000/health         # 200
+curl -s -o /dev/null -w "frontend:   %{http_code}\n" localhost:3000/              # 200(首 20s 编译)
+docker exec basjoo-backend-dev curl -s -X POST localhost:8000/api/admin/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"me@example.com","password":"smokepass123"}' \
+  | python3 -c 'import sys,json; print("login: token_len=",len(json.load(sys.stdin)["access_token"]))'
+# login: token_len= ~120
+docker exec basjoo-backend-dev curl -s -H "Authorization: Bearer $(docker exec basjoo-backend-dev curl -s -X POST localhost:8000/api/admin/login -H 'Content-Type: application/json' -d '{"email":"me@example.com","password":"smokepass123"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')" \
+  localhost:8000/api/v1/agents | head -c 100
+# {"agents":[],"total":0}
+curl -s -o /dev/null -w "widget-demo: %{http_code}\n" localhost:8000/widget-demo # 200
+```
+
+---
+
+## 5. 数据与状态
+
+### 5.1 看健康
+
+```bash
+docker compose --profile dev ps
+```
+
+### 5.2 重置 admin 密码 / role
+
+```bash
+docker exec basjoo-backend-dev python3 -c "
+import sqlite3, bcrypt
+con = sqlite3.connect('/app/data/basjoo.db')
+hashed = bcrypt.hashpw(b'new_password_min_8', bcrypt.gensalt()).decode()
+con.execute('UPDATE admin_users SET hashed_password=?, role=? WHERE email=?',
+            (hashed, 'super_admin', 'me@example.com'))
+con.commit()
+"
+```
+
+### 5.3 看 / 清 KB
+
+```bash
+docker exec basjoo-qdrant sh -c "ls /qdrant/storage/collections/"               # collections
+docker exec basjoo-qdrant curl -s -X DELETE http://localhost:6333/collections/<name>  # 删(慎)
+docker exec basjoo-postgres psql -U basjoo -d basjoo -c \
+  "SELECT id, kb_id, filename, status FROM kb_documents ORDER BY created_at DESC LIMIT 10;"
+```
+
+### 5.4 全部 reset(到首次启动)
+
+```bash
+docker compose --profile dev down -v   # 删:backend-data, redis-data, postgres-data, qdrant-data
+docker compose --profile dev up -d
+```
+
+`/app/data/.secret_key` / `.encryption_key` 跟着删。`.env` 里 `SECRET_KEY` 优先(无则用 `dev-secret-key`)。
+
+### 5.5 部分 reset(保留 KB 向量)
+
+```bash
+docker compose --profile dev stop backend-dev frontend-dev
+docker volume rm basjoo_backend-data basjoo_postgres-data
+docker compose --profile dev up -d
+```
+
+---
+
+## 6. 排错
+
+### 6.1 build 卡在 `failed to fetch oauth token`
+
+国内网络拉 `auth.docker.io:443` 不通。**修**:§3.1 用 DaoCloud 镜像手动 tag,或在 Docker Desktop registry-mirrors 永久加。
+
+### 6.2 `python` / `pip` 报 `command not found`
+
+`python` 指向 WindowsApps 占位。venv 在 `backend/venv_pr1/`,不是默认 `venv/`。**修**:
+
+```bash
+cd backend
+source venv_pr1/Scripts/activate   # Git Bash / WSL
+# 或 .\venv_pr1\Scripts\Activate.ps1 (PowerShell)
+python -m pip install -r requirements.txt
+python -m pytest tests/test_xxx.py
+```
+
+### 6.3 SQLite `unable to open database file`
+
+Windows 路径反斜杠没转 forward slash。**修**:
+
+```python
+url = "sqlite:///" + str(path).replace("\\", "/")
+```
+
+(`backend/tests/test_mcp_http_e2e.py:55` 有现成例子。)
+
+### 6.4 API key 泄漏
+
+**⚠️ 别把 key 贴 AI 聊天 / Slack / 公共 issue**。AI 服务端会留 history,key 一旦发出等于公开。
+
+**安全做法**:admin UI 填 / `.env` 设(已 gitignore) / SSH 传。
+
+**已泄漏**:① provider 后台 rotate;② `docker exec basjoo-backend-dev python3 -c "import sqlite3; con=sqlite3.connect('/app/data/basjoo.db'); con.execute('UPDATE agents SET api_key=NULL WHERE id=?', ('XXX',)); con.commit()"`;③ 重填新 key。
+
+### 6.5 改代码 backend 不生效
+
+- reload 抽风 → `docker compose restart backend-dev` + `docker logs --tail 30 basjoo-backend-dev`
+- 改的不是 dev 挂的卷 → `docker exec basjoo-backend-dev cat /app/api/v1/endpoints.py | head -5` 验证
+- 改 `services/__init__.py` 之类 → **必须 `restart`**,reload 不重 import module
+
+### 6.6 端口被占
+
+```bash
+netstat -ano | grep ":3000\|:8000"   # Windows,找到 PID
+taskkill /F /PID <pid>
+```
+
+### 6.7 SQLite `database is locked` / greenlet 警告刷屏
+
+SQLite 单写,测试并发没关连接会锁。**修**:
+
+```bash
+rm -rf backend/.pytest_dbs/*.db
+cd backend && source venv_pr1/Scripts/activate && pytest tests/test_xxx.py
+```
+
+greenlet finalize warning 通常无害(测试结果对),看着糟心可分文件跑,避免一次跑全。
+
+### 6.8 MCP `RuntimeError: Task group is not initialized`
+
+PR9 + PR10 已修(`backend/main.py` 用 `Starlette(Mount(...), lifespan=...)` + 后台 task 跑 `_session_manager.run()`)。**新分支**看到这错,先 `git log -p backend/main.py | grep -A20 "Mount.*mcp"` 确认 fix 是否继承。
+
+---
+
+## 7. 给真实客户网站嵌 widget(部署期)
+
+> 本地 dev 跳过这一节;生产部署 + 嵌入用。
+
+1. **部署 basjoo**:走 `install-deploy.sh`(Ubuntu/Debian 一键,起 prod profile + nginx + HTTPS)。
+2. **HTTPS 必须开**:访客的浏览器只允许 HTTPS 页面跑 SDK,HTTP SDK 加载会失败。
+3. **widget origin 白名单**:**`super_admin` 在 admin UI 上把客户网站域名加进 agent 的 `allowed_widget_origins`**(JSON 数组)。不加的话 `/api/v1/chat` 会 403(同源策略)。
+4. **嵌代码**(放客户网站 `</body>` 前):
+
+   ```html
+   <script>
+   (function() {
+     var s = document.createElement('script');
+     s.src = 'https://<basjoo-domain>/sdk.js';
+     s.async = true;
+     s.defer = true;
+     s.setAttribute('data-agent-id', '<AGENT_ID>');
+     s.setAttribute('data-api-base', 'https://<basjoo-domain>');
+     document.head.appendChild(s);
+   })();
+   </script>
+   ```
+
+   `<AGENT_ID>` 在 admin → agents 列表里复制。
+
+5. **验证**:用客户的域名打开网站,看右下角气泡;F12 console 应该看到 SDK 日志(若开了 verbose)。
+
+---
+
+## 8. 完全拆除
+
+```bash
+docker compose --profile dev down -v
+docker rmi basjoo-backend-dev basjoo-frontend-dev basjoo-scrapling-service
+rm -rf backend/.pytest_dbs/
+# 浏览器 localStorage 清:F12 → Application → Local Storage → Clear
+```
+
+---
+
+## 9. 引用
+
+- `docker-compose.yml` — service / 端口 / 依赖
+- `install-deploy.sh` — 生产部署
+- `CLAUDE.md` — 架构 / API / 安全
+- `docs/requirements-second-pass.md` — 二开需求
+- `docs/operations.md`(本文件)— 怎么跑
+
+---
+
+## 变更记录
+
+- 2026-06-11 v1.0 — 初稿(基于 PR1-PR10 + dev 实际操作)
+- 2026-06-12 v1.1 — 收 PR11(vi_VN locale + widget_locale)、PR12(widget language selector);删冗余;默认 admin 改记实际值(`smokepass123`);修 §5.5 自指 bug;§6 排错去重;加 §7 widget 嵌入指引
