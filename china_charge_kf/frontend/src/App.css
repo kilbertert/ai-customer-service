@@ -404,3 +404,66 @@
   font-size: 12px;
   color: #666;
 }
+
+/* M6.3 — Stop button variant */
+.send.stop {
+  background-color: #b42318;
+}
+
+.send.stop:active {
+  opacity: 0.8;
+}
+
+/* M6.3 — "stopped" tag appended to assistant bubble */
+.stoppedTag {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+
+/* M6.1 — null text placeholder ("(no response)") */
+.text.noResponse {
+  color: #999;
+  font-style: italic;
+}
+
+/* M6.4 — dedicated error banner (NOT inside assistant bubble) */
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background-color: #fef3f2;
+  border: 0.5px solid #fecdca;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #b42318;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.errorLabel {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.errorMsg {
+  flex: 1;
+  word-break: break-word;
+}
+
+.errorDismiss {
+  border: none;
+  background: transparent;
+  color: #b42318;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.errorDismiss:active {
+  opacity: 0.6;
+}

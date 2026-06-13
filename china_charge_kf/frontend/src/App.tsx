@@ -94,6 +94,11 @@ type ChatMessage = {
   text?: string
   imagePreviewUrl?: string
   audioUrl?: string
+  // M6.3 — true if user aborted mid-stream; UI appends "(stopped)" tag
+  stopped?: boolean
+  // M6.1 — true if message_complete.text === null AND no deltas received
+  // (distinguishes "backend yielded None" from "backend yielded ''")
+  noResponse?: boolean
 }
 
 const translations = {
@@ -114,6 +119,12 @@ const translations = {
     requestFailed: '请求失败',
     networkError: '网络错误',
     audioNotSupported: '您的浏览器不支持录音功能',
+    // M6.1 / M6.3 / M6.4
+    noResponse: '（无回复）',
+    stopButton: '停止',
+    streamStopped: '（已停止）',
+    streamErrorBanner: '出错了',
+    dismissError: '关闭',
   },
   en: {
     title: 'Smart Assistant',
@@ -132,6 +143,12 @@ const translations = {
     requestFailed: 'Request failed',
     networkError: 'Network error',
     audioNotSupported: 'Your browser does not support audio recording',
+    // M6.1 / M6.3 / M6.4
+    noResponse: '(no response)',
+    stopButton: 'Stop',
+    streamStopped: '(stopped)',
+    streamErrorBanner: 'Something went wrong',
+    dismissError: 'Dismiss',
   },
   vi: {
     title: 'Trợ lý Thông minh',
@@ -150,6 +167,12 @@ const translations = {
     requestFailed: 'Yêu cầu thất bại',
     networkError: 'Lỗi mạng',
     audioNotSupported: 'Trình duyệt của bạn không hỗ trợ ghi âm',
+    // M6.1 / M6.3 / M6.4
+    noResponse: '(không có phản hồi)',
+    stopButton: 'Dừng',
+    streamStopped: '(đã dừng)',
+    streamErrorBanner: 'Đã xảy ra lỗi',
+    dismissError: 'Đóng',
   },
 }
 
@@ -239,6 +262,10 @@ function App() {
   const recordingStartTimeRef = useRef<number>(0)
   const recordingTimerRef = useRef<number | null>(null)
   const isRecordingRef = useRef<boolean>(false)
+  // M6.3 — controller for in-flight SSE stream; abort() cancels via signal
+  const streamControllerRef = useRef<AbortController | null>(null)
+  // M6.4 — dedicated stream error state; segregated from assistant message text
+  const [streamError, setStreamError] = useState<{ code: DifyErrorCode; message: string } | null>(null)
   // const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) || 'https://zcf.h5.qumall.qushiyun.com'
   const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) || ''
   // M5 — feature flag: 默认走 streaming (Dify v2); 设为 "false" 走 legacy blocking (/api/chat)
@@ -483,14 +510,27 @@ function App() {
     const assistantId = generateId()
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', text: '' }])
 
+    // M6.3 — AbortController per stream; M6.4 — clear stale error banner
+    const controller = new AbortController()
+    streamControllerRef.current = controller
+    setStreamError(null)
+
     let fileIds: string[] = []
     if (file) {
       try {
-        const result = await uploadFile(file, apiBase)
+        const result = await uploadFile(file, apiBase, controller.signal)
         fileIds = [result.file_id]
       } catch (e) {
-        const detail =
-          e instanceof FileUploadError ? e.message : `${t.networkError}: ${String(e)}`
+        controller.abort()
+        streamControllerRef.current = null
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          // M6.3 — user stopped before upload finished
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, stopped: true } : m)),
+          )
+          return
+        }
+        const detail = e instanceof FileUploadError ? e.message : `${t.networkError}: ${String(e)}`
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId ? { ...m, text: `${t.requestFailed}: ${detail}` } : m,
@@ -506,6 +546,7 @@ function App() {
         file_ids: fileIds,
         language: languageParams[lang],
         apiBase,
+        signal: controller.signal,
       })) {
         if (ev.type === 'message_delta') {
           setMessages((prev) =>
@@ -514,33 +555,42 @@ function App() {
             ),
           )
         } else if (ev.type === 'message_complete') {
-          // message_complete.text 是 Dify 拼好的完整文本,优先覆盖 (防止 delta 丢字符)
+          // M6.1 — null → "(no response)" placeholder; '' or text → use backend value
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, text: ev.text || m.text || t.emptyResponse }
-                : m,
-            ),
+            prev.map((m) => {
+              if (m.id !== assistantId) return m
+              if (ev.text === null && !m.text) return { ...m, text: '', noResponse: true }
+              return { ...m, text: ev.text ?? m.text ?? '', noResponse: false }
+            }),
           )
+          setStreamError(null) // M6.4 — successful complete clears stale error
         } else if (ev.type === 'error') {
-          const msg = streamErrorMessages[ev.code]?.[lang] ?? ev.message
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, text: `${t.requestFailed}: ${msg}` } : m,
-            ),
-          )
+          // M6.4 — error to dedicated banner, NOT assistant bubble
+          setStreamError({ code: ev.code, message: ev.message })
           return
+        } else if (ev.type === 'end') {
+          setStreamError(null) // M6.4 — defensive (error-then-end race)
         }
-        // session_started / end — UI 无需渲染
       }
     } catch (e) {
+      // M6.3 — distinguish abort from real errors
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, stopped: true } : m)),
+        )
+        return
+      }
+      // M6.4 — non-abort errors → banner
       const detail = e instanceof DifyStreamError ? e.message : `${t.networkError}: ${String(e)}`
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId ? { ...m, text: `${t.requestFailed}: ${detail}` } : m,
-        ),
-      )
+      setStreamError({ code: 'DIFY_UNKNOWN', message: detail })
+    } finally {
+      streamControllerRef.current = null
     }
+  }
+
+  // M6.3 — cancels in-flight SSE via AbortSignal
+  function stopStream() {
+    streamControllerRef.current?.abort()
   }
 
   return (
@@ -599,6 +649,23 @@ function App() {
       </header>
 
       <main className="chat" ref={listRef} onClick={() => setIsMorePanelOpen(false)}>
+        {/* M6.4 — dedicated error banner; segregated from assistant message stream */}
+        {streamError ? (
+          <div className="errorBanner" role="alert">
+            <span className="errorLabel">{t.streamErrorBanner}</span>
+            <span className="errorMsg">
+              {streamErrorMessages[streamError.code]?.[lang] ?? streamError.message}
+            </span>
+            <button
+              className="errorDismiss"
+              type="button"
+              onClick={() => setStreamError(null)}
+              aria-label={t.dismissError}
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
         <div className="systemMessage">
           <span className="systemText">{t.subtitle}</span>
         </div>
@@ -612,7 +679,11 @@ function App() {
                   <audio className="audioMessage" src={m.audioUrl} controls />
                 </div>
               ) : null}
-              {m.text ? <div className="text">{m.text}</div> : null}
+              {/* M6.1 — explicit placeholder for null text (distinct from empty string) */}
+              {m.noResponse ? <div className="text noResponse">{t.noResponse}</div> : null}
+              {m.text && !m.noResponse ? <div className="text">{m.text}</div> : null}
+              {/* M6.3 — "stopped" tag appended below partial content */}
+              {m.stopped ? <div className="stoppedTag">{t.streamStopped}</div> : null}
             </div>
             {m.role === 'user' ? <Avatar role="user" /> : null}
           </div>
@@ -700,7 +771,12 @@ function App() {
           </div>
 
           <div className="rightAction">
-            {((text.trim().length > 0 || file || audioBlob) && !isVoiceMode) ? (
+            {/* M6.3 — Stop button replaces Send while a stream is in flight */}
+            {isSending && streamControllerRef.current ? (
+              <button className="send stop" type="button" onClick={stopStream}>
+                {t.stopButton}
+              </button>
+            ) : ((text.trim().length > 0 || file || audioBlob) && !isVoiceMode) ? (
               <button className="send" type="button" onClick={() => void handleSend()} disabled={isSending}>
                 {t.send}
               </button>
