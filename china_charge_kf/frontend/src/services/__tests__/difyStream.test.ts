@@ -18,6 +18,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import {
   DifyStreamError,
   abortStatePatch,
+  createThinkStripper,
   parseEvent,
   parseFields,
   streamChat,
@@ -427,5 +428,213 @@ describe('abortStatePatch', () => {
     const patch2 = abortStatePatch('x')
     expect(patch2.stopped).toBe(true)
     expect(patch2.noResponse).toBe(false)
+  })
+})
+
+// ============== M9.1 — createThinkStripper stream-level buffer ==============
+
+describe('createThinkStripper', () => {
+  it('emits prefix before open tag and holds the think block itself', () => {
+    // Arrange — chunk boundary at the start of <think>
+    const s = createThinkStripper()
+
+    // Act — first chunk crosses into think block
+    const emitted = s.feed('hello<think>reasoning still in progress')
+
+    // Assert — only the prefix before <think> reaches the bubble
+    expect(emitted).toBe('hello')
+  })
+
+  it('emits everything after the close tag, swallowing the think body', () => {
+    // Arrange — complete think block in one chunk
+    const s = createThinkStripper()
+
+    // Act
+    const emitted = s.feed('a<think>secret reasoning</think>final answer')
+
+    // Assert — only the surrounding text reaches the bubble
+    expect(emitted).toBe('afinal answer')
+  })
+
+  it('releases nothing while waiting for </think> (chunk boundary inside think)', () => {
+    // Arrange — feed enters think mode, hold all subsequent content
+    const s = createThinkStripper()
+
+    // Act — multiple chunks all inside the think block
+    const e1 = s.feed('before<think>rea')
+    const e2 = s.feed('soning ch')
+    const e3 = s.feed('unk 1')
+
+    // Assert — nothing emitted while inside think
+    expect(e1).toBe('before')
+    expect(e2).toBe('')
+    expect(e3).toBe('')
+  })
+
+  it('emits everything after close once </think> arrives', () => {
+    // Arrange — hold then release pattern
+    const s = createThinkStripper()
+
+    // Act — three chunks: hold mid-think, then emit post-think across two chunks
+    const e1 = s.feed('prefix<think>reasoning')
+    const e2 = s.feed('</think>post-')
+    const e3 = s.feed('fix')
+
+    // Assert
+    expect(e1).toBe('prefix')
+    expect(e2).toBe('post-')
+    expect(e3).toBe('fix')
+  })
+
+  it('strips multiple adjacent think blocks in one stream', () => {
+    // Arrange — three think blocks + intervening visible text (matches the
+    // 3-block-per-response baseline measured in M9-PROMPT §1.5)
+    const s = createThinkStripper()
+
+    // Act — all in one chunk to keep the test focused on multi-block logic
+    const emitted = s.feed(
+      'intro<think>r1</think>mid<think>r2</think>end<think>r3</think>tail',
+    )
+
+    // Assert — only visible text crosses the boundary
+    expect(emitted).toBe('intromidendtail')
+  })
+
+  it('drops unclosed think residue on flush (model anomaly)', () => {
+    // Arrange — chunk enters think block but stream ends before close
+    const s = createThinkStripper()
+
+    // Act
+    const e1 = s.feed('safe<think>orphaned reasoning that never closed')
+    const residual = s.flush()
+
+    // Assert — flush drops the unclosed think block, returns the safe prefix
+    expect(e1).toBe('safe')
+    expect(residual).toBe('')
+  })
+
+  it('flushes a trailing safe suffix (lookahead hold at end-of-stream)', () => {
+    // Arrange — text that contains no <think> tag and no trailing `<`
+    const s = createThinkStripper()
+
+    // Act — feed text in two chunks, then flush
+    const e1 = s.feed('plain visible ')
+    const e2 = s.feed('reply')
+    const residual = s.flush()
+
+    // Assert — nothing pending after second feed; flush returns empty
+    // (lookahead only kicks in when a trailing `<` could start a tag).
+    expect(e1).toBe('plain visible ')
+    expect(e2).toBe('reply')
+    expect(residual).toBe('')
+  })
+
+  it('disambiguates a partial <thi prefix that does NOT form <think>', () => {
+    // Arrange — chunk 1 holds `<thi` (4 chars, < 7-char lookahead window).
+    // Chunk 2 starts with `ng>` so combined becomes `<thing>literal` — NOT
+    // the think tag (after `<thi` we need `nk>`, but we get `ng>`). The
+    // stripper must release the held prefix as literal text once it
+    // sees the next chunk fails to complete the tag.
+    const s = createThinkStripper()
+
+    // Act
+    const e1 = s.feed('abc<thi')
+    const e2 = s.feed('ng>literal text')
+
+    // Assert — e1 emits the safe prefix "abc"; e2 emits the held "<thi"
+    // plus new chunk as literal text (combined "<thing>literal text").
+    expect(e1).toBe('abc')
+    expect(e2).toBe('<thing>literal text')
+  })
+
+  it('isolates buffer state between separate stripper instances', () => {
+    // Arrange — two concurrent strippers must not share state
+    const a = createThinkStripper()
+    const b = createThinkStripper()
+
+    // Act — feed different content into each
+    const a1 = a.feed('AAA<think>secret')
+    const b1 = b.feed('BBB safe')
+
+    // Assert — each only sees its own buffer
+    expect(a1).toBe('AAA')
+    expect(b1).toBe('BBB safe')
+  })
+})
+
+// ============== M9.1 — streamChat integration with ThinkStripper ==============
+
+describe('streamChat M9.1 — think strip across SSE chunk boundaries', () => {
+  it('never yields a message_delta containing <think> or </think> substring', async () => {
+    // Arrange — simulate the real-Dify pattern from M9-PROMPT §1:
+    // character-level tokens that cross chunk boundaries inside think tags.
+    // Two think blocks + intervening visible text, all emitted across many deltas.
+    const sseBody = [
+      'event: session_started\ndata: {"session_id":"mock-m9","started_at":null}\n\n',
+      // First think block — open tag split across two deltas
+      'event: message_delta\ndata: {"text":"<thi"}\n\n',
+      'event: message_delta\ndata: {"text":"nk>"}\n\n',
+      // Think content emitted across three deltas
+      'event: message_delta\ndata: {"text":"re"}\n\n',
+      'event: message_delta\ndata: {"text":"as"}\n\n',
+      'event: message_delta\ndata: {"text":"on"}\n\n',
+      // Close tag split across two deltas
+      'event: message_delta\ndata: {"text":"</"}\n\n',
+      'event: message_delta\ndata: {"text":"think>"}\n\n',
+      // Visible reply text across two deltas
+      'event: message_delta\ndata: {"text":"hel"}\n\n',
+      'event: message_delta\ndata: {"text":"lo"}\n\n',
+      // Second think block — open + content + close all in one delta
+      'event: message_delta\ndata: {"text":"<think>more reasoning</think>"}\n\n',
+      // Trailing visible text (the " world" reply suffix)
+      'event: message_delta\ndata: {"text":" world"}\n\n',
+      // Final clean text
+      'event: message_complete\ndata: {"text":"hello world","total_tokens":10,"elapsed_time":0.5}\n\n',
+    ].join('')
+    installFetchMock(streamResponse([sseBody]))
+
+    // Act — collect every emitted event
+    const events = await collectEvents(
+      streamChat({ text: 'probe', apiBase: 'http://x', end_user: 'tester' }),
+    )
+
+    // Assert — every message_delta text is free of think-tag substrings
+    const deltas = events.filter(
+      (e): e is { type: 'message_delta'; text: string } => e.type === 'message_delta',
+    )
+    for (const d of deltas) {
+      expect(d.text).not.toContain('<think>')
+      expect(d.text).not.toContain('</think>')
+    }
+
+    // And the concatenated delta text equals the visible reply
+    const joined = deltas.map((d) => d.text).join('')
+    expect(joined).toBe('hello world')
+  })
+
+  it('emits residual safe suffix as final delta before yielding message_complete', async () => {
+    // Arrange — final visible text arrives in a delta that also contains the
+    // close tag, so the close lands in the same chunk as post-think content.
+    const sseBody = [
+      'event: session_started\ndata: {"session_id":"x","started_at":null}\n\n',
+      'event: message_delta\ndata: {"text":"<think>reason</think>"}\n\n',
+      'event: message_delta\ndata: {"text":"visible tail"}\n\n',
+      'event: message_complete\ndata: {"text":"visible tail","total_tokens":1,"elapsed_time":0.1}\n\n',
+    ].join('')
+    installFetchMock(streamResponse([sseBody]))
+
+    // Act
+    const events = await collectEvents(
+      streamChat({ text: 't', apiBase: 'http://x' }),
+    )
+
+    // Assert — the post-think tail delta is preserved and message_complete lands after
+    const deltas = events.filter(
+      (e): e is { type: 'message_delta'; text: string } => e.type === 'message_delta',
+    )
+    expect(deltas.map((d) => d.text).join('')).toBe('visible tail')
+
+    const complete = events.find((e) => e.type === 'message_complete')
+    expect(complete).toBeDefined()
   })
 })
