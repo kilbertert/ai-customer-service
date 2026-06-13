@@ -1,12 +1,24 @@
 # CLAUDE.md
 
+> **2026-06-13 备注**：本目录原为独立 git 仓库，已于 commit `5981f65` 并入主仓 `ai-customer-service/` 作为子目录。本文件同时也是子目录的项目说明，两份 CLAUDE.md 各自维护自身内容（根 CLAUDE.md 描述 basjoo fork 全局，本文件描述 china_charge_kf/ 子项目）。
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-H5 智能客服 — a browser-based customer service chat application with text, image, and voice input, powered by a FastAPI backend that calls the Coze workflow API.
+H5 智能客服 — a browser-based customer service chat application with text, image, and voice input. The backend has two parallel implementations, **independent and selectively runnable**:
 
-**Stack**: React + TypeScript + Vite (frontend) | FastAPI (backend) | Nginx (proxy) | Docker + docker-compose (deployment)
+- `backend/app/` — Coze prototype (port 8011, original)
+- `backend/app_dify/` — Dify Workflow prototype (port 8012, current focus, M2-extended)
+
+**Stack**: React + TypeScript + Vite (frontend) | FastAPI (backend, two impls) | Nginx (proxy) | Docker + docker-compose (deployment)
+
+### M2 状态 (2026-06-13)
+
+- `backend/app_dify/dify_client.py` 已扩展：`run_workflow_blocking` / `run_workflow_stream` / `DifyAuthError` / `DifyBadRequestError` / `DifyUpstreamError` / `extract_output_text`
+- 62 tests, 97% line coverage at `backend/tests/test_dify_client.py`
+- 契约文档：`docs/api-contract-dify.md` §4.2.1 (PR9 U1–U10) + §4.2 (PR10 file-list)
+- 错误映射：`docs/sse-event-mapping.md` §6.5.1/§6.5.2 (PR8)
 
 ## Dev Commands
 
