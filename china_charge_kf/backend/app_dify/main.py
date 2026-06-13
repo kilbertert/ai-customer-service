@@ -1,6 +1,10 @@
+"""M4 FastAPI app — China Charge Dify H5 Chat Backend.
+
+M8.5 — `_sse_bytes` / `_truncate_error` 私有 helpers 已提取到
+`app_dify.sse_bytes` 公共模块（DRY 修复，与 `sse_proxy_layer.py` 共享）。
+"""
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, AsyncIterator, Optional
 
@@ -13,6 +17,7 @@ from app_dify.config import settings
 from app_dify.dify_client import DifyClient, DifyError, DifyUpstreamError
 from app_dify.response_parser import extract_assistant_text
 from app_dify.schemas import ChatResponse
+from app_dify.sse_bytes import sse_bytes, truncate_error
 from app_dify.sse_proxy_layer import SseProxyLayer
 
 logging.basicConfig(
@@ -36,31 +41,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ============== 共享 helpers (M4 streaming 端点) ==============
-
-_MAX_ERROR_MESSAGE = 200  # 与 SseProxyLayer._MAX_ERROR_MESSAGE 对齐 (PR8 §6.5 H3)
-
-
-def _sse_bytes(event: str, data: dict[str, Any]) -> bytes:
-    """生成单个 SSE 事件字节（`event: <name>\\ndata: <json>\\n\\n`）。
-
-    与 `SseProxyLayer._sse_event` 同形（ensure_ascii=False + UTF-8）。
-    独立实现避免 import M3 私有符号；语义对齐靠 `test_sse_proxy_layer` 锁定。
-    """
-    return (
-        f"event: {event}\n"
-        f"data: {json.dumps(data, ensure_ascii=False)}\n"
-        "\n"
-    ).encode("utf-8")
-
-
-def _truncate_error(message: str, max_len: int = _MAX_ERROR_MESSAGE) -> str:
-    """截断错误消息到 ≤ max_len 字符（H3 — 与 SseProxyLayer._truncate_error_message 对齐）。"""
-    if len(message) <= max_len:
-        return message
-    return message[:max_len] + "..."
 
 
 # ============== M4 Schemas ==============
@@ -258,11 +238,11 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
         except DifyUpstreamError as e:
             # 0-事件空流防御 — 翻译 raise 为 SSE bytes
             log.warning("Dify stream produced no events: %s", e)
-            yield _sse_bytes("error", {
+            yield sse_bytes("error", {
                 "code": "DIFY_UPSTREAM",
-                "message": _truncate_error(str(e)),
+                "message": truncate_error(str(e)),
             })
-            yield _sse_bytes("end", {})
+            yield sse_bytes("end", {})
 
     return StreamingResponse(
         event_stream(),
