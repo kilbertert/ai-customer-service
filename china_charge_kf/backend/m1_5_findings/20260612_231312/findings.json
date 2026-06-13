@@ -1,0 +1,3230 @@
+{
+  "_meta": {
+    "ts": "2026-06-12T23:13:12.217845",
+    "api_base": "http://124.243.178.156:8501/v1",
+    "end_user": "h5-frontend-user",
+    "v1_api_key_prefix": "app-0mLH...",
+    "v2_api_key_prefix": "app-N7Bg...",
+    "verify_ssl": true,
+    "yml_bytes": 5682
+  },
+  "step0_platform": {
+    "platform_probe": [
+      {
+        "endpoint": "<api>/info",
+        "method": "GET",
+        "status": 200,
+        "body": {
+          "name": "China_charge_seriver",
+          "description": "智能对话平台 - 面向海外用户的多模态充电桩售后全流程客服助手。支持文本/图片/语音输入，结合视觉理解、ASR 与知识库检索，为用户提供设备答疑、故障排查与操作指导。",
+          "tags": [],
+          "mode": "workflow",
+          "author_name": "qushiyun"
+        }
+      },
+      {
+        "endpoint": "<api>/parameters",
+        "method": "GET",
+        "status": 200,
+        "body": {
+          "opening_statement": "",
+          "suggested_questions": [],
+          "suggested_questions_after_answer": {
+            "enabled": false
+          },
+          "speech_to_text": {
+            "enabled": false
+          },
+          "text_to_speech": {
+            "enabled": false,
+            "language": "",
+            "voice": ""
+          },
+          "retriever_resource": {
+            "enabled": true
+          },
+          "annotation_reply": {
+            "enabled": false
+          },
+          "more_like_this": {
+            "enabled": false
+          },
+          "user_input_form": [
+            {
+              "paragraph": {
+                "label": "input_text",
+                "max_length": 2000,
+                "options": [],
+                "required": false,
+                "type": "paragraph",
+                "variable": "input_text"
+              }
+            },
+            {
+              "text-input": {
+                "label": "language",
+                "max_length": 48,
+                "options": [],
+                "required": false,
+                "type": "text-input",
+                "variable": "language"
+              }
+            },
+            {
+              "file": {
+                "label": "input_image",
+                "type": "file",
+                "variable": "input_image",
+                "required": false,
+                "allowed_file_types": [
+                  "image"
+                ],
+                "allowed_file_extensions": [
+                  ".jpg",
+                  ".jpeg",
+                  ".png",
+                  ".webp",
+                  ".gif"
+                ],
+                "allowed_file_upload_methods": [
+                  "local_file",
+                  "remote_url"
+                ]
+              }
+            },
+            {
+              "file": {
+                "label": "input_audio",
+                "type": "file",
+                "variable": "input_audio",
+                "required": false,
+                "allowed_file_types": [
+                  "audio"
+                ],
+                "allowed_file_extensions": [
+                  ".mp3",
+                  ".m4a",
+                  ".wav",
+                  ".webm",
+                  ".amr"
+                ],
+                "allowed_file_upload_methods": [
+                  "local_file",
+                  "remote_url"
+                ]
+              }
+            }
+          ],
+          "sensitive_word_avoidance": {
+            "enabled": false
+          },
+          "file_upload": {
+            "image": {
+              "enabled": false,
+              "number_limits": 1,
+              "transfer_methods": [
+                "local_file",
+                "remote_url"
+              ]
+            },
+            "enabled": true,
+            "allowed_file_types": [
+              "image",
+              "audio"
+            ],
+            "allowed_file_extensions": [
+              ".JPG",
+              ".JPEG",
+              ".PNG",
+              ".GIF",
+              ".WEBP",
+              ".MP3",
+              ".M4A",
+              ".WAV",
+              ".WEBM",
+              ".AMR"
+            ],
+            "allowed_file_upload_methods": [
+              "local_file",
+              "remote_url"
+            ],
+            "number_limits": 1,
+            "fileUploadConfig": {
+              "file_size_limit": 15,
+              "batch_count_limit": 5,
+              "file_upload_limit": 20,
+              "image_file_size_limit": 10,
+              "video_file_size_limit": 100,
+              "audio_file_size_limit": 50,
+              "workflow_file_upload_limit": 10,
+              "image_file_batch_limit": 10,
+              "single_chunk_attachment_limit": 10,
+              "attachment_image_file_size_limit": 2
+            }
+          },
+          "system_parameters": {
+            "image_file_size_limit": 10,
+            "video_file_size_limit": 100,
+            "audio_file_size_limit": 50,
+            "file_size_limit": 15,
+            "workflow_file_upload_limit": 10
+          }
+        }
+      },
+      {
+        "endpoint": "<api>/apps",
+        "method": "GET",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/workflows",
+        "method": "GET",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/datasets",
+        "method": "GET",
+        "status": 401,
+        "body": {
+          "code": "unauthorized",
+          "message": "Access token is invalid",
+          "status": 401
+        }
+      }
+    ]
+  },
+  "step1_import": {
+    "import_attempts": [
+      {
+        "endpoint": "<api>/apps/import",
+        "mode": "multipart",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/apps/import",
+        "mode": "json",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/apps/imports",
+        "mode": "multipart",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      }
+    ]
+  },
+  "S1_status": 200,
+  "S1_raw_text_len": 29656,
+  "S1_raw_text": "event: ping\n\ndata: {\"event\":\"workflow_started\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"workflow_id\":\"dcc2ca61-ffcf-40fc-a133-939578462c3a\",\"inputs\":{\"input_text\":\"你好,简单介绍一下你自己\",\"language\":null,\"input_img_id\":null,\"input_audio_id\":null,\"sys.files\":[],\"sys.user_id\":\"h5-frontend-user\",\"sys.app_id\":\"8222073d-c49e-4998-9240-74d96514bacd\",\"sys.workflow_id\":\"dcc2ca61-ffcf-40fc-a133-939578462c3a\",\"sys.workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\"},\"created_at\":1781277193,\"reason\":\"initial\"}}\n\ndata: {\"event\":\"node_started\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"ca9ea0c1-52df-4935-ae39-4ac04a470ce4\",\"node_id\":\"2001\",\"node_type\":\"start\",\"title\":\"开始\",\"index\":1,\"predecessor_node_id\":null,\"inputs\":null,\"inputs_truncated\":false,\"created_at\":1781277193,\"extras\":{},\"iteration_id\":null,\"loop_id\":null,\"agent_strategy\":null}}\n\ndata: {\"event\":\"node_finished\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"ca9ea0c1-52df-4935-ae39-4ac04a470ce4\",\"node_id\":\"2001\",\"node_type\":\"start\",\"title\":\"开始\",\"index\":1,\"predecessor_node_id\":null,\"inputs\":{\"input_text\":\"你好,简单介绍一下你自己\",\"language\":null,\"input_img_id\":null,\"input_audio_id\":null},\"inputs_truncated\":false,\"process_data\":{},\"process_data_truncated\":false,\"outputs\":{\"input_text\":\"你好,简单介绍一下你自己\",\"language\":null,\"input_img_id\":null,\"input_audio_id\":null},\"outputs_truncated\":false,\"status\":\"succeeded\",\"error\":null,\"elapsed_time\":0.000449,\"execution_metadata\":null,\"created_at\":1781277193,\"finished_at\":1781277193,\"files\":[],\"iteration_id\":null,\"loop_id\":null}}\n\ndata: {\"event\":\"node_started\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"3570c6ff-063b-4829-8fe3-d869dad5b6a9\",\"node_id\":\"2007\",\"node_type\":\"llm\",\"title\":\"大模型\",\"index\":1,\"predecessor_node_id\":null,\"inputs\":null,\"inputs_truncated\":false,\"created_at\":1781277193,\"extras\":{},\"iteration_id\":null,\"loop_id\":null,\"agent_strategy\":null}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"<think>\\n你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"好\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"呀\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"😊\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\" \",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"我\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"是\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"专门\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"为\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"提供\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"充电桩\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"相关\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"支持\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"的\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"售后\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"助手\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"哦\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"~\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\\n</think>\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"<think>\\n我\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"可\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"提供\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"充电桩\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"故障\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"排查\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"、\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"使用\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"操作\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"指引\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"及\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"售后\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"流程\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"咨询\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"服务\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"，\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"有\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"相关\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"问题\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"都\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"能\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"随时\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"找\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"我\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"。\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\\n</think>\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"<think>\\n\\n\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\\n</think>你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"好\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"呀\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"😊\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\" \",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"我\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"是\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"专门\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"为\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"提供\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"充电桩\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"相关\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"支持\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"的\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"售后\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"助手\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"哦\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"~\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\" \",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"不管\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"遇到\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"充电桩\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"故障\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"排查\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"、\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"日常\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"使用\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"操作\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"疑问\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"，\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"还是\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"想\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"了解\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"售后\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"相关\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"流程\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"，\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"都\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"可以\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"随时\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"和\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"我说\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"，\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"我\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"会\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"给\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"专业\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"又\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"安全\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"的\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"可\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"执行\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"指引\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"，\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"帮\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"你\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"顺利\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"解决\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"相关\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"问题\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"哒\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"😉\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"text_chunk\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"text\":\"\",\"from_variable_selector\":[\"2007\",\"text\"]}}\n\ndata: {\"event\":\"node_finished\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"3570c6ff-063b-4829-8fe3-d869dad5b6a9\",\"node_id\":\"2007\",\"node_type\":\"llm\",\"title\":\"大模型\",\"index\":1,\"predecessor_node_id\":null,\"inputs\":{\"model_provider\":\"langgenius/volcengine_maas/volcengine_maas\",\"model_name\":\"Doubao-Seed-2.0-lite\"},\"inputs_truncated\":false,\"process_data\":{\"model_mode\":\"chat\",\"prompts\":[{\"role\":\"system\",\"text\":\"# 角色定义\\n你是面向海外用户的充电桩售后诊断与支持助手，专精于充电桩故障排查、\\n日常使用指导、售后流程解答。回答风格：友好、耐心、专业，必要时配合\\nemoji 让对话更轻松。\\n\\n# 目标\\n1. 准确诊断用户问题，给出可执行的解决步骤\\n2. 用用户提问的语言回答（参考 ）\\n3. 涉及电气安全、紧急故障时优先提示断电 + 联系专业人员\\n\\n# 优先级\\n1. 安全提示 > 故障诊断 > 使用指导 > 闲聊\\n\\n# 输出要求\\n- 直接输出最终客服回复\\n- 不输出 JSON、markdown 标题、内部分析过程\\n- 回复要兼顾专业性、可执行性和客服服务感\\n\",\"files\":[]},{\"role\":\"user\",\"text\":\"用户问题：你好,简单介绍一下你自己\\n\",\"files\":[]}],\"usage\":{\"prompt_tokens\":218,\"prompt_unit_price\":\"0.0006\",\"prompt_price_unit\":\"0.001\",\"prompt_price\":\"0.0001308\",\"completion_tokens\":204,\"completion_unit_price\":\"0.0036\",\"completion_price_unit\":\"0.001\",\"completion_price\":\"0.0007344\",\"total_tokens\":422,\"total_price\":\"0.0008652\",\"currency\":\"RMB\",\"latency\":5.093,\"time_to_first_token\":3.784,\"time_to_generate\":1.309},\"finish_reason\":\"stop\",\"model_provider\":\"langgenius/volcengine_maas/volcengine_maas\",\"model_name\":\"Doubao-Seed-2.0-lite\"},\"process_data_truncated\":false,\"outputs\":{\"text\":\"<think>\\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\\n</think><think>\\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\\n</think><think>\\n\\n\\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉\",\"reasoning_content\":\"\",\"usage\":{\"prompt_tokens\":218,\"prompt_unit_price\":\"0.0006\",\"prompt_price_unit\":\"0.001\",\"prompt_price\":\"0.0001308\",\"completion_tokens\":204,\"completion_unit_price\":\"0.0036\",\"completion_price_unit\":\"0.001\",\"completion_price\":\"0.0007344\",\"total_tokens\":422,\"total_price\":\"0.0008652\",\"currency\":\"RMB\",\"latency\":5.093,\"time_to_first_token\":3.784,\"time_to_generate\":1.309},\"finish_reason\":\"stop\"},\"outputs_truncated\":false,\"status\":\"succeeded\",\"error\":null,\"elapsed_time\":5.094374,\"execution_metadata\":{\"total_tokens\":422,\"total_price\":\"0.0008652\",\"currency\":\"RMB\"},\"created_at\":1781277193,\"finished_at\":1781277199,\"files\":[],\"iteration_id\":null,\"loop_id\":null}}\n\ndata: {\"event\":\"node_started\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"9091ce7e-0763-4040-b2a5-2840c3571416\",\"node_id\":\"2015\",\"node_type\":\"end\",\"title\":\"结束\",\"index\":1,\"predecessor_node_id\":null,\"inputs\":null,\"inputs_truncated\":false,\"created_at\":1781277199,\"extras\":{},\"iteration_id\":null,\"loop_id\":null,\"agent_strategy\":null}}\n\ndata: {\"event\":\"node_finished\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"9091ce7e-0763-4040-b2a5-2840c3571416\",\"node_id\":\"2015\",\"node_type\":\"end\",\"title\":\"结束\",\"index\":1,\"predecessor_node_id\":null,\"inputs\":{\"output\":\"<think>\\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\\n</think><think>\\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\\n</think><think>\\n\\n\\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉\"},\"inputs_truncated\":false,\"process_data\":{},\"process_data_truncated\":false,\"outputs\":{\"output\":\"<think>\\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\\n</think><think>\\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\\n</think><think>\\n\\n\\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉\"},\"outputs_truncated\":false,\"status\":\"succeeded\",\"error\":null,\"elapsed_time\":0.000107,\"execution_metadata\":null,\"created_at\":1781277199,\"finished_at\":1781277199,\"files\":[],\"iteration_id\":null,\"loop_id\":null}}\n\ndata: {\"event\":\"workflow_finished\",\"workflow_run_id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"task_id\":\"ad527879-a0f3-4a1b-8b60-08249606bca9\",\"data\":{\"id\":\"5603026b-8be9-4566-b8a9-98f78db0eee8\",\"workflow_id\":\"dcc2ca61-ffcf-40fc-a133-939578462c3a\",\"status\":\"succeeded\",\"outputs\":{\"output\":\"<think>\\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\\n</think><think>\\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\\n</think><think>\\n\\n\\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉\"},\"error\":null,\"elapsed_time\":5.67374,\"total_tokens\":422,\"total_steps\":3,\"created_by\":{\"id\":\"52534ccd-dff5-4ba0-854a-8e9e8df55e50\",\"user\":\"h5-frontend-user\"},\"created_at\":1781277193,\"finished_at\":1781277199,\"exceptions_count\":0,\"files\":[]}}\n\n",
+  "S1_event_count": 125,
+  "S1_event_types": [
+    "ping",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "S1_parsed_data": [
+    {
+      "event_field": null,
+      "data": {
+        "event": "workflow_started",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+          "workflow_id": "dcc2ca61-ffcf-40fc-a133-939578462c3a",
+          "inputs": {
+            "input_text": "你好,简单介绍一下你自己",
+            "language": null,
+            "input_img_id": null,
+            "input_audio_id": null,
+            "sys.files": [],
+            "sys.user_id": "h5-frontend-user",
+            "sys.app_id": "8222073d-c49e-4998-9240-74d96514bacd",
+            "sys.workflow_id": "dcc2ca61-ffcf-40fc-a133-939578462c3a",
+            "sys.workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8"
+          },
+          "created_at": 1781277193,
+          "reason": "initial"
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "node_started",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "ca9ea0c1-52df-4935-ae39-4ac04a470ce4",
+          "node_id": "2001",
+          "node_type": "start",
+          "title": "开始",
+          "index": 1,
+          "predecessor_node_id": null,
+          "inputs": null,
+          "inputs_truncated": false,
+          "created_at": 1781277193,
+          "extras": {},
+          "iteration_id": null,
+          "loop_id": null,
+          "agent_strategy": null
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "node_finished",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "ca9ea0c1-52df-4935-ae39-4ac04a470ce4",
+          "node_id": "2001",
+          "node_type": "start",
+          "title": "开始",
+          "index": 1,
+          "predecessor_node_id": null,
+          "inputs": {
+            "input_text": "你好,简单介绍一下你自己",
+            "language": null,
+            "input_img_id": null,
+            "input_audio_id": null
+          },
+          "inputs_truncated": false,
+          "process_data": {},
+          "process_data_truncated": false,
+          "outputs": {
+            "input_text": "你好,简单介绍一下你自己",
+            "language": null,
+            "input_img_id": null,
+            "input_audio_id": null
+          },
+          "outputs_truncated": false,
+          "status": "succeeded",
+          "error": null,
+          "elapsed_time": 0.000449,
+          "execution_metadata": null,
+          "created_at": 1781277193,
+          "finished_at": 1781277193,
+          "files": [],
+          "iteration_id": null,
+          "loop_id": null
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "node_started",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "3570c6ff-063b-4829-8fe3-d869dad5b6a9",
+          "node_id": "2007",
+          "node_type": "llm",
+          "title": "大模型",
+          "index": 1,
+          "predecessor_node_id": null,
+          "inputs": null,
+          "inputs_truncated": false,
+          "created_at": 1781277193,
+          "extras": {},
+          "iteration_id": null,
+          "loop_id": null,
+          "agent_strategy": null
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "<think>\n你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "好",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "呀",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "😊",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": " ",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "我",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "是",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "专门",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "为",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "提供",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "充电桩",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "相关",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "支持",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "的",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "售后",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "助手",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "哦",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "~",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "\n</think>",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "<think>\n我",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "可",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "提供",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "充电桩",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "故障",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "排查",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "、",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "使用",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "操作",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "指引",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "及",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "售后",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "流程",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "咨询",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "服务",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "，",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "有",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "相关",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "问题",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "都",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "能",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "随时",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "找",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "我",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "。",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "\n</think>",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "<think>\n\n",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "\n</think>你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "好",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "呀",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "😊",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": " ",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "我",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "是",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "专门",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "为",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "提供",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "充电桩",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "相关",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "支持",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "的",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "售后",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "助手",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "哦",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "~",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": " ",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "不管",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "遇到",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "充电桩",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "故障",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "排查",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "、",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "日常",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "使用",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "操作",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "疑问",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "，",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "还是",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "想",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "了解",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "售后",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "相关",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "流程",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "，",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "都",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "可以",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "随时",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "和",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "我说",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "，",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "我",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "会",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "给",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "专业",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "又",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "安全",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "的",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "可",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "执行",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "指引",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "，",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "帮",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "你",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "顺利",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "解决",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "相关",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "问题",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "哒",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "😉",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "text_chunk",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "text": "",
+          "from_variable_selector": [
+            "2007",
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "node_finished",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "3570c6ff-063b-4829-8fe3-d869dad5b6a9",
+          "node_id": "2007",
+          "node_type": "llm",
+          "title": "大模型",
+          "index": 1,
+          "predecessor_node_id": null,
+          "inputs": {
+            "model_provider": "langgenius/volcengine_maas/volcengine_maas",
+            "model_name": "Doubao-Seed-2.0-lite"
+          },
+          "inputs_truncated": false,
+          "process_data": {
+            "model_mode": "chat",
+            "prompts": [
+              {
+                "role": "system",
+                "text": "# 角色定义\n你是面向海外用户的充电桩售后诊断与支持助手，专精于充电桩故障排查、\n日常使用指导、售后流程解答。回答风格：友好、耐心、专业，必要时配合\nemoji 让对话更轻松。\n\n# 目标\n1. 准确诊断用户问题，给出可执行的解决步骤\n2. 用用户提问的语言回答（参考 ）\n3. 涉及电气安全、紧急故障时优先提示断电 + 联系专业人员\n\n# 优先级\n1. 安全提示 > 故障诊断 > 使用指导 > 闲聊\n\n# 输出要求\n- 直接输出最终客服回复\n- 不输出 JSON、markdown 标题、内部分析过程\n- 回复要兼顾专业性、可执行性和客服服务感\n",
+                "files": []
+              },
+              {
+                "role": "user",
+                "text": "用户问题：你好,简单介绍一下你自己\n",
+                "files": []
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 218,
+              "prompt_unit_price": "0.0006",
+              "prompt_price_unit": "0.001",
+              "prompt_price": "0.0001308",
+              "completion_tokens": 204,
+              "completion_unit_price": "0.0036",
+              "completion_price_unit": "0.001",
+              "completion_price": "0.0007344",
+              "total_tokens": 422,
+              "total_price": "0.0008652",
+              "currency": "RMB",
+              "latency": 5.093,
+              "time_to_first_token": 3.784,
+              "time_to_generate": 1.309
+            },
+            "finish_reason": "stop",
+            "model_provider": "langgenius/volcengine_maas/volcengine_maas",
+            "model_name": "Doubao-Seed-2.0-lite"
+          },
+          "process_data_truncated": false,
+          "outputs": {
+            "text": "<think>\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\n</think><think>\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\n</think><think>\n\n\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉",
+            "reasoning_content": "",
+            "usage": {
+              "prompt_tokens": 218,
+              "prompt_unit_price": "0.0006",
+              "prompt_price_unit": "0.001",
+              "prompt_price": "0.0001308",
+              "completion_tokens": 204,
+              "completion_unit_price": "0.0036",
+              "completion_price_unit": "0.001",
+              "completion_price": "0.0007344",
+              "total_tokens": 422,
+              "total_price": "0.0008652",
+              "currency": "RMB",
+              "latency": 5.093,
+              "time_to_first_token": 3.784,
+              "time_to_generate": 1.309
+            },
+            "finish_reason": "stop"
+          },
+          "outputs_truncated": false,
+          "status": "succeeded",
+          "error": null,
+          "elapsed_time": 5.094374,
+          "execution_metadata": {
+            "total_tokens": 422,
+            "total_price": "0.0008652",
+            "currency": "RMB"
+          },
+          "created_at": 1781277193,
+          "finished_at": 1781277199,
+          "files": [],
+          "iteration_id": null,
+          "loop_id": null
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "node_started",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "9091ce7e-0763-4040-b2a5-2840c3571416",
+          "node_id": "2015",
+          "node_type": "end",
+          "title": "结束",
+          "index": 1,
+          "predecessor_node_id": null,
+          "inputs": null,
+          "inputs_truncated": false,
+          "created_at": 1781277199,
+          "extras": {},
+          "iteration_id": null,
+          "loop_id": null,
+          "agent_strategy": null
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "node_finished",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "9091ce7e-0763-4040-b2a5-2840c3571416",
+          "node_id": "2015",
+          "node_type": "end",
+          "title": "结束",
+          "index": 1,
+          "predecessor_node_id": null,
+          "inputs": {
+            "output": "<think>\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\n</think><think>\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\n</think><think>\n\n\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉"
+          },
+          "inputs_truncated": false,
+          "process_data": {},
+          "process_data_truncated": false,
+          "outputs": {
+            "output": "<think>\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\n</think><think>\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\n</think><think>\n\n\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉"
+          },
+          "outputs_truncated": false,
+          "status": "succeeded",
+          "error": null,
+          "elapsed_time": 0.000107,
+          "execution_metadata": null,
+          "created_at": 1781277199,
+          "finished_at": 1781277199,
+          "files": [],
+          "iteration_id": null,
+          "loop_id": null
+        }
+      }
+    },
+    {
+      "event_field": null,
+      "data": {
+        "event": "workflow_finished",
+        "workflow_run_id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+        "task_id": "ad527879-a0f3-4a1b-8b60-08249606bca9",
+        "data": {
+          "id": "5603026b-8be9-4566-b8a9-98f78db0eee8",
+          "workflow_id": "dcc2ca61-ffcf-40fc-a133-939578462c3a",
+          "status": "succeeded",
+          "outputs": {
+            "output": "<think>\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\n</think><think>\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\n</think><think>\n\n\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的可执行指引，帮你顺利解决相关问题哒😉"
+          },
+          "error": null,
+          "elapsed_time": 5.67374,
+          "total_tokens": 422,
+          "total_steps": 3,
+          "created_by": {
+            "id": "52534ccd-dff5-4ba0-854a-8e9e8df55e50",
+            "user": "h5-frontend-user"
+          },
+          "created_at": 1781277193,
+          "finished_at": 1781277199,
+          "exceptions_count": 0,
+          "files": []
+        }
+      }
+    }
+  ],
+  "S1_selectors": [
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    },
+    {
+      "event": "text_chunk",
+      "selector": [
+        "2007",
+        "text"
+      ]
+    }
+  ],
+  "S1_think_in_text_chunk": true,
+  "S1_workflow_finished": {
+    "status": "succeeded",
+    "outputs_keys": [
+      "output"
+    ],
+    "output_value_preview": "<think>\n你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~\n</think><think>\n我可提供充电桩故障排查、使用操作指引及售后流程咨询服务，有相关问题都能随时找我。\n</think><think>\n\n\n</think>你好呀😊 我是专门为你提供充电桩相关支持的售后助手哦~ 不管你遇到充电桩故障排查、日常使用操作疑问，还是想了解售后相关流程，都可以随时和我说，我会给你专业又安全的",
+    "total_tokens": 422,
+    "elapsed_time": 5.67374
+  },
+  "S11_text_chunk_count": 116,
+  "S11_non_2007_count": 0,
+  "S11_pass": true,
+  "S2_upload_file_id": "562cd934-4054-4269-afdd-a5385f54191a",
+  "S2_status": 200,
+  "S2_outputs_keys": [],
+  "S2_output_preview": "",
+  "S2_status_data": "failed",
+  "S2_error": "req_id: 61883a5991 PluginInvokeError: {\"args\":{},\"error_type\":\"ArkBadRequestError\",\"message\":\"Error code: 400 - {'error': {'code': 'InvalidParameter', 'message': 'image data 0 failed: Image dimensions are too small. Minimum allowed dimension: 14 pixels. Current dimensions: width = 1, height = 1. Request id: 0217812772008595235aef975397f5d903665288b4210b55a1c6e', 'param': '', 'type': 'BadRequest'}}, request_id: 202606121513208PIYLB3hRcAbUJEelNfd\"}",
+  "S4_status": 401,
+  "S4_body": "{\"code\":\"unauthorized\",\"message\":\"Access token is invalid\",\"status\":401}\n",
+  "S6_status": 400,
+  "S6_data_status": null,
+  "S6_outputs_keys": [],
+  "S6_error_field": null,
+  "S6_response_body": {
+    "code": "invalid_param",
+    "message": "Invalid upload file",
+    "status": 400
+  },
+  "S6b_upload_file_id": "c948541f-23a3-4e56-9189-4580e6e6d5ca",
+  "S6b_status": 200,
+  "S6b_data_status": "failed",
+  "S6b_error": "req_id: f6f0a36be1 PluginInvokeError: {\"args\":{},\"error_type\":\"ArkBadRequestError\",\"message\":\"Error code: 400 - {'error': {'code': 'InvalidParameter', 'message': 'image data 0 failed: Image dimensions are too small. Minimum allowed dimension: 14 pixels. Current dimensions: width = 1, height = 1. Request id: 021781277202093377b40f86b525a5b2b80b969e4540b3ff84fa1', 'param': '', 'type': 'BadRequest'}}, request_id: 20260612151321BU57RKpE3kYx6UK5bWs3\"}"
+}

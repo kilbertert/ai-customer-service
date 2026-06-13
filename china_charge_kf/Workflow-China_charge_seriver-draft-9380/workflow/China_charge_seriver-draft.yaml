@@ -1,0 +1,1006 @@
+schema_version: 1.0.0
+name: China_charge_seriver
+id: 7615498037791588402
+description: "智能对话平台"
+mode: workflow
+icon: plugin_icon/workflow.png
+nodes:
+    - id: "100001"
+      type: start
+      title: 开始
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Start-v2.jpg
+      description: "工作流的起始节点，用于设定启动工作流需要的信息"
+      position:
+        x: -67
+        y: 0
+      parameters:
+        node_outputs:
+            input_audio_id:
+                type: audio
+                value: null
+            input_img_id:
+                type: image
+                value: null
+            input_text:
+                type: string
+                value: null
+            language:
+                type: string
+                value: null
+    - id: "900001"
+      type: end
+      title: 结束
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-End-v2.jpg
+      description: "工作流的最终节点，用于返回工作流运行后的结果信息"
+      position:
+        x: 4257.239796121882
+        y: 967.9104507001337
+      parameters:
+        node_inputs:
+            - name: output
+              input:
+                type: string
+                value:
+                    path: Group1
+                    ref_node: "113302"
+        terminatePlan: returnVariables
+    - id: "145978"
+      type: condition
+      title: 选择器
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Condition-v2.jpg
+      description: "连接多个下游分支，若设定的条件成立则仅运行对应的分支，若均不成立则只运行“否则”分支"
+      position:
+        x: 353
+        y: -25
+      parameters:
+        branches:
+            - condition:
+                conditions:
+                    - left:
+                        input:
+                            value:
+                                path: input_img_id
+                                ref_node: "100001"
+                      operator: 10
+                logic: 2
+            - condition:
+                conditions:
+                    - left:
+                        input:
+                            value:
+                                path: input_audio_id
+                                ref_node: "100001"
+                      operator: 10
+                logic: 2
+    - id: "190617"
+      type: knowledge
+      title: 知识库检索
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-KnowledgeQuery-v2.jpg
+      description: "在选定的知识中,根据输入变量召回最匹配的信息,并以列表形式返回"
+      position:
+        x: 2866.7928023861004
+        y: 282.99452797729174
+      parameters:
+        datasetParam:
+            - name: datasetList
+              input:
+                type: list
+                items:
+                    type: string
+                    value: null
+                value:
+                    - "7615505366314401842"
+            - name: topK
+              input:
+                type: integer
+                value: "1"
+            - name: useRerank
+              input:
+                type: boolean
+                value: true
+            - name: useRewrite
+              input:
+                type: boolean
+                value: true
+            - name: isPersonalOnly
+              input:
+                type: boolean
+                value: true
+            - name: datasetType
+              input:
+                type: integer
+                value: "0"
+            - name: VolcanoInfoList
+              input:
+                type: list
+                items:
+                    type: object
+                    value: null
+                value: []
+            - name: minScore
+              input:
+                type: float
+                value: "0.79"
+            - name: strategy
+              input:
+                type: integer
+                value: "1"
+        node_inputs:
+            - name: Query
+              input:
+                type: string
+                value:
+                    path: output
+                    ref_node: "138707"
+            - name: enableChatHistory
+              input:
+                type: boolean
+                value: false
+            - name: chatHistoryRound
+              input:
+                type: float
+                value: 3
+        node_outputs:
+            outputList:
+                type: list
+                items:
+                    type: object
+                    properties:
+                        documentId:
+                            type: string
+                            value: null
+                        output:
+                            type: string
+                            value: null
+                    value: null
+                value: null
+    - id: "161610"
+      type: llm
+      title: 大模型
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-LLM-v2.jpg
+      description: "调用大语言模型,使用变量和提示词生成回复"
+      version: "3"
+      position:
+        x: 3290.1852151293792
+        y: 420.99452797729174
+      parameters:
+        fcParamVar:
+            knowledgeFCParam: {}
+        llmParam:
+            - name: generationDiversity
+              input:
+                type: string
+                value: balance
+            - name: apiMode
+              input:
+                type: integer
+                value: "0"
+            - name: temperature
+              input:
+                type: float
+                value: "0.5"
+            - name: topP
+              input:
+                type: float
+                value: "1"
+            - name: frequencyPenalty
+              input:
+                type: float
+                value: "0"
+            - name: maxTokens
+              input:
+                type: integer
+                value: "4096"
+            - name: spCurrentTime
+              input:
+                type: boolean
+                value: false
+            - name: spAntiLeak
+              input:
+                type: boolean
+                value: false
+            - name: thinkingType
+              input:
+                type: string
+                value: disabled
+            - name: responseFormat
+              input:
+                type: integer
+                value: "2"
+            - name: modelName
+              input:
+                type: string
+                value: 豆包·1.6·思考深度调节
+            - name: modelType
+              input:
+                type: integer
+                value: "1761535088"
+            - name: parameters
+              input:
+                type: object
+                properties:
+                    max_completion_tokens:
+                        type: integer
+                        value: "0"
+                    reasoning_effort:
+                        type: string
+                        value: minimal
+                value: null
+            - name: prompt
+              input:
+                type: string
+                value: |-
+                    用户问题：{{input_text}}
+
+                    参考资料：
+                    {{context}}
+
+                    请基于以上参考资料回答用户问题。如果参考资料和用户问题相关性非常差，则直接回答通用知识，回答内容不能超过100字，不要进入深度思考，响应要快。
+            - name: enableChatHistory
+              input:
+                type: boolean
+                value: false
+            - name: chatHistoryRound
+              input:
+                type: integer
+                value: "3"
+            - name: systemPrompt
+              input:
+                type: string
+                value: |-
+                    # 角色定义
+                    你是一个专业的净水器问答助手，擅长基于提供的参考资料准确回答用户问题。
+
+                    # 任务目标
+                    根据用户查询和检索到的知识库内容，生成准确、专业、有帮助的回答。
+
+                    # 工作流上下文
+                    - **Input**：用户的查询文本和相关参考资料
+                    - **Process**：
+                      1. 理解用户问题的核心意图
+                      2. 分析提供的参考资料，提取与问题相关的关键信息
+                      3. 整合信息，生成结构化的回答
+                      4. 如果参考资料不足，诚实告知并基于通用知识适度补充
+                    - **Output**：准确、易理解的回答文本
+
+                    # 约束与规则
+                    - 优先使用参考资料中的信息
+                    - 如果参考资料不相关或不足，可以适当补充通用知识，但要明确说明
+                    - 回答要简洁清晰，避免冗余
+                    - 保持专业、友好的语气
+                    - 如果无法回答，要诚实告知用户
+
+                    # 过程
+                    1. 分析用户问题的核心需求
+                    2. 检查参考资料的相关性和可信度
+                    3. 提取关键信息并组织答案结构
+                    4. 生成最终回答
+
+                    # 输出格式
+                    直接返回回答内容，输出语言为{{language}}，不需要额外的JSON格式或标记。
+            - name: stableSystemPrompt
+              input:
+                type: string
+                value: ""
+            - name: canContinue
+              input:
+                type: boolean
+                value: false
+            - name: loopPromptVersion
+              input:
+                type: string
+                value: ""
+            - name: loopPromptName
+              input:
+                type: string
+                value: ""
+            - name: loopPromptId
+              input:
+                type: string
+                value: ""
+        node_inputs:
+            - name: context
+              input:
+                type: string
+                value:
+                    path: outputList.output
+                    ref_node: "190617"
+            - name: input_text
+              input:
+                type: string
+                value:
+                    path: output
+                    ref_node: "138707"
+            - name: language
+              input:
+                value:
+                    path: language
+                    ref_node: "100001"
+        node_outputs:
+            output:
+                type: string
+                value: null
+            reasoning_content:
+                type: string
+                value: null
+        settingOnError:
+            processType: 1
+            retryTimes: 0
+            switch: false
+            timeoutMs: 180000
+    - id: "138707"
+      type: text
+      title: 文本处理
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-StrConcat-v2.jpg
+      description: "用于处理多个字符串类型变量的格式"
+      position:
+        x: 2000.9282906805577
+        y: 372.2025867700636
+      parameters:
+        concatParams:
+            - name: concatResult
+              input:
+                type: string
+                value: " {{String2}}，{{String1}}"
+            - name: arrayItemConcatChar
+              input:
+                type: string
+                value: "，"
+            - name: allArrayItemConcatChars
+              input:
+                type: list
+                items:
+                    type: object
+                    value: null
+                value:
+                    - isDefault: true
+                      label: "换行"
+                      value: "\n"
+                    - isDefault: true
+                      label: "制表符"
+                      value: "\t"
+                    - isDefault: true
+                      label: "句号"
+                      value: "。"
+                    - isDefault: true
+                      label: "逗号"
+                      value: "，"
+                    - isDefault: true
+                      label: "分号"
+                      value: "；"
+                    - isDefault: true
+                      label: "空格"
+                      value: " "
+        method: concat
+        node_inputs:
+            - name: String1
+              input:
+                type: string
+                value:
+                    path: Group1
+                    ref_node: "179294"
+            - name: String2
+              input:
+                value:
+                    path: input_text
+                    ref_node: "100001"
+        node_outputs:
+            output:
+                type: string
+                required: true
+                value: null
+    - id: "165159"
+      type: output
+      title: 输出
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Output-v2.jpg
+      description: "节点从“消息”更名为“输出”，支持中间过程的消息输出，支持流式和非流式两种方式"
+      position:
+        x: 895.2100475632968
+        y: 169.76270144411933
+      parameters:
+        callTransferVoice: true
+        chatHistoryWriting: historyWrite
+        content:
+            type: string
+            value:
+                content: '{{output}}'
+                type: literal
+        node_inputs:
+            - name: output
+              input:
+                value:
+                    path: input_text
+                    ref_node: "100001"
+        streamingOutput: false
+    - id: "179294"
+      type: variable_merge
+      title: 变量聚合
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/VariableMerge-icon.jpg
+      description: "对多个分支的输出进行聚合处理"
+      position:
+        x: 1610.716881004074
+        y: 180.5225793557741
+      parameters:
+        mergeGroups:
+            - name: Group1
+              variables:
+                - type: string
+                  value:
+                    content:
+                        blockID: "137871"
+                        name: longest_text
+                        source: block-output
+                    rawMeta:
+                        type: 1
+                    type: ref
+                - type: string
+                  value:
+                    content:
+                        blockID: "185368"
+                        name: data.results.words.text
+                        source: block-output
+                    rawMeta:
+                        type: 1
+                    type: ref
+        node_outputs:
+            Group1:
+                type: string
+                value: null
+    - id: "185368"
+      type: plugin
+      title: Image2text
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Plugin-v2.jpg
+      description: "图片转文字"
+      position:
+        x: 790.7168810040739
+        y: -151.47842064422588
+      parameters:
+        apiParam:
+            - name: apiID
+              input:
+                type: string
+                value: "7379229178446544908"
+            - name: apiName
+              input:
+                type: string
+                value: "Image2text"
+            - name: pluginID
+              input:
+                type: string
+                value: "7379229178446528524"
+            - name: pluginName
+              input:
+                type: string
+                value: "OCR"
+            - name: pluginVersion
+              input:
+                type: string
+                value: ""
+            - name: tips
+              input:
+                type: string
+                value: ""
+            - name: outDocLink
+              input:
+                type: string
+                value: ""
+        node_inputs:
+            - name: url
+              input:
+                value:
+                    path: input_img_id
+                    ref_node: "100001"
+        node_outputs:
+            code:
+                type: float
+                value: null
+            data:
+                type: object
+                properties:
+                    results:
+                        type: list
+                        items:
+                            type: object
+                            properties:
+                                words:
+                                    type: list
+                                    items:
+                                        type: object
+                                        properties:
+                                            lang:
+                                                type: string
+                                                value: null
+                                                description: 文本语种代码
+                                            text:
+                                                type: string
+                                                value: null
+                                                description: 文本内容
+                                        value: null
+                                    value: null
+                                    description: 返回结果
+                            value: null
+                        value: null
+                        description: 返回结果
+                value: null
+                description: 返回结果
+            log_id:
+                type: string
+                value: null
+            msg:
+                type: string
+                value: null
+        settingOnError:
+            processType: 1
+            retryTimes: 0
+            timeoutMs: 180000
+    - id: "186797"
+      type: plugin
+      title: asr_lite
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Plugin-v2.jpg
+      description: "准确地将语音内容转写成文字。适用于录音质检、会议总结、音频内容分析、课堂内容分析等场景。按照时长计费，对应计费项“录音文件识别（极速版）”。计费项&免费额度说明：https://www.coze.cn/open/docs/coze_pro/asr_tts_fee"
+      position:
+        x: 882.7999727253889
+        y: 476.52540288823866
+      parameters:
+        apiParam:
+            - name: apiID
+              input:
+                type: string
+                value: "7506818401994752000"
+            - name: apiName
+              input:
+                type: string
+                value: "asr_lite"
+            - name: pluginID
+              input:
+                type: string
+                value: "7506818401994735616"
+            - name: pluginName
+              input:
+                type: string
+                value: "语音识别"
+            - name: pluginVersion
+              input:
+                type: string
+                value: ""
+            - name: tips
+              input:
+                type: string
+                value: ""
+            - name: outDocLink
+              input:
+                type: string
+                value: ""
+        node_inputs:
+            - name: audio_url
+              input:
+                value:
+                    path: input_audio_id
+                    ref_node: "100001"
+            - name: language
+              input:
+                value:
+                    path: language
+                    ref_node: "100001"
+        node_outputs:
+            code:
+                type: float
+                value: null
+            data:
+                type: object
+                properties:
+                    text:
+                        type: string
+                        value: null
+                        description: 识别出的文本
+                value: null
+            log_id:
+                type: string
+                value: null
+            msg:
+                type: string
+                value: null
+        settingOnError:
+            processType: 1
+            retryTimes: 0
+            timeoutMs: 180000
+    - id: "1734505"
+      type: llm
+      title: 大模型_1
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-LLM-v2.jpg
+      description: "调用大语言模型,使用变量和提示词生成回复"
+      version: "3"
+      position:
+        x: 2056.587598636664
+        y: 742.9462435471086
+      parameters:
+        fcParamVar:
+            knowledgeFCParam: {}
+        llmParam:
+            - name: apiMode
+              input:
+                type: integer
+                value: "0"
+            - name: maxTokens
+              input:
+                type: integer
+                value: "2200"
+            - name: spCurrentTime
+              input:
+                type: boolean
+                value: false
+            - name: spAntiLeak
+              input:
+                type: boolean
+                value: false
+            - name: thinkingType
+              input:
+                type: string
+                value: disabled
+            - name: responseFormat
+              input:
+                type: integer
+                value: "2"
+            - name: modelName
+              input:
+                type: string
+                value: DeepSeek-V3.2
+            - name: modelType
+              input:
+                type: integer
+                value: "1764929611"
+            - name: generationDiversity
+              input:
+                type: string
+                value: balance
+            - name: parameters
+              input:
+                type: object
+                value: null
+            - name: prompt
+              input:
+                type: string
+                value: |-
+                    用户问题：{{text}}
+
+                    参考资料：
+                    {{output}}
+
+                    请基于以上参考资料回答用户问题。如果参考资料和用户问题相关性非常差，则直接回答通用知识，回答不要超过100字。
+            - name: enableChatHistory
+              input:
+                type: boolean
+                value: false
+            - name: chatHistoryRound
+              input:
+                type: integer
+                value: "3"
+            - name: systemPrompt
+              input:
+                type: string
+                value: |-
+                    # 角色定义
+                    你是一个专业的净水器问答助手，擅长基于提供的参考资料准确回答用户问题。
+
+                    # 任务目标
+                    根据用户查询和检索到的知识库内容，生成准确、专业、有帮助的回答。
+
+                    # 工作流上下文
+                    - **Input**：用户的查询文本和相关参考资料
+                    - **Process**：
+                      1. 理解用户问题的核心意图
+                      2. 分析提供的参考资料，提取与问题相关的关键信息
+                      3. 整合信息，生成结构化的回答
+                      4. 如果参考资料不足，诚实告知并基于通用知识适度补充
+                    - **Output**：准确、完整、易理解的回答文本
+
+                    # 约束与规则
+                    - 优先使用参考资料中的信息
+                    - 如果参考资料不相关或不足，可以适当补充通用知识，但要明确说明
+                    - 回答要简洁清晰，避免冗余
+                    - 保持专业、友好的语气
+                    - 如果无法回答，要诚实告知用户
+
+                    # 过程
+                    1. 分析用户问题的核心需求
+                    2. 检查参考资料的相关性和可信度
+                    3. 提取关键信息并组织答案结构
+                    4. 生成最终回答
+
+                    # 输出格式
+                    直接返回回答内容，输出语言为{{language}}，不需要额外的JSON格式或标记。
+            - name: stableSystemPrompt
+              input:
+                type: string
+                value: ""
+            - name: canContinue
+              input:
+                type: boolean
+                value: false
+            - name: loopPromptVersion
+              input:
+                type: string
+                value: ""
+            - name: loopPromptName
+              input:
+                type: string
+                value: ""
+            - name: loopPromptId
+              input:
+                type: string
+                value: ""
+        node_inputs:
+            - name: language
+              input:
+                value:
+                    path: language
+                    ref_node: "100001"
+            - name: output
+              input:
+                type: string
+                value:
+                    path: outputList.output
+                    ref_node: "1564147"
+            - name: text
+              input:
+                value:
+                    path: data.text
+                    ref_node: "186797"
+        node_outputs:
+            output:
+                type: string
+                value: null
+        settingOnError:
+            processType: 1
+            retryTimes: 0
+            switch: false
+            timeoutMs: 180000
+    - id: "1564147"
+      type: knowledge
+      title: 知识库检索_1
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-KnowledgeQuery-v2.jpg
+      description: "在选定的知识中,根据输入变量召回最匹配的信息,并以列表形式返回"
+      position:
+        x: 1474.0002693384658
+        y: 567.2815175905184
+      parameters:
+        datasetParam:
+            - name: datasetList
+              input:
+                type: list
+                items:
+                    type: string
+                    value: null
+                value:
+                    - "7615505366314401842"
+            - name: topK
+              input:
+                type: integer
+                value: "1"
+            - name: useRerank
+              input:
+                type: boolean
+                value: true
+            - name: useRewrite
+              input:
+                type: boolean
+                value: true
+            - name: isPersonalOnly
+              input:
+                type: boolean
+                value: true
+            - name: datasetType
+              input:
+                type: integer
+                value: "0"
+            - name: VolcanoInfoList
+              input:
+                type: list
+                items:
+                    type: object
+                    value: null
+                value: []
+            - name: minScore
+              input:
+                type: float
+                value: "0.71"
+            - name: strategy
+              input:
+                type: integer
+                value: "1"
+        node_inputs:
+            - name: Query
+              input:
+                value:
+                    path: data.text
+                    ref_node: "186797"
+            - name: enableChatHistory
+              input:
+                type: boolean
+                value: false
+            - name: chatHistoryRound
+              input:
+                type: float
+                value: 3
+        node_outputs:
+            outputList:
+                type: list
+                items:
+                    type: object
+                    properties:
+                        documentId:
+                            type: string
+                            value: null
+                        output:
+                            type: string
+                            value: null
+                    value: null
+                value: null
+    - id: "113302"
+      type: variable_merge
+      title: 变量聚合_1
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/VariableMerge-icon.jpg
+      description: "对多个分支的输出进行聚合处理"
+      position:
+        x: 3718.9520903031807
+        y: 807.4514534245167
+      parameters:
+        mergeGroups:
+            - name: Group1
+              variables:
+                - type: string
+                  value:
+                    content:
+                        blockID: "161610"
+                        name: output
+                        source: block-output
+                    rawMeta:
+                        type: 1
+                    type: ref
+                - type: string
+                  value:
+                    content:
+                        blockID: "1734505"
+                        name: output
+                        source: block-output
+                    rawMeta:
+                        type: 1
+                    type: ref
+        node_outputs:
+            Group1:
+                type: string
+                value: null
+    - id: "137871"
+      type: code
+      title: 代码
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg
+      description: "编写代码，处理输入变量来生成返回值"
+      version: v2
+      position:
+        x: 1200.716881004074
+        y: 14.52207935577411
+      parameters:
+        code: "# 在这里，您可以通过 'args'  获取节点中的输入变量，并通过 'ret' 输出结果\n# 'args' 已经被正确地注入到环境中\n# 下面是一个示例，首先获取节点的全部输入参数params，其次获取其中参数名为'input'的值：\n# params = args.params; \n# input = params['input'];\n# 下面是一个示例，输出一个包含多种数据类型的 'ret' 对象：\n# ret: Output =  { \"name\": '小明', \"hobbies\": [\"看书\", \"旅游\"] };\n\nasync def main(args: Args) -> Output:\n    params = args.params\n    input_array = params[\"input\"]\n\n    longest_item = max(input_array,key=lambda x: len(x['text']))\n\n    ret: Output = {\n        \"longest_text\": longest_item['text']\n    }\n    \n    return ret"
+        language: 3
+        node_inputs:
+            - name: input
+              input:
+                type: list
+                items:
+                    type: object
+                    properties:
+                        lang:
+                            type: string
+                            value: null
+                            description: 文本语种代码
+                        text:
+                            type: string
+                            value: null
+                            description: 文本内容
+                    value: null
+                value:
+                    path: data.results.words
+                    ref_node: "185368"
+        node_outputs:
+            lang:
+                type: string
+                value: null
+            longest_text:
+                type: string
+                value: null
+        settingOnError:
+            processType: 1
+            retryTimes: 0
+            switch: false
+            timeoutMs: 60000
+    - id: "122952"
+      type: intent
+      title: 意图识别
+      icon: https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Intent-v2.jpg
+      description: "用于用户输入的意图识别，并将其与预设意图选项进行匹配。"
+      position:
+        x: 2432.1166306441883
+        y: 86.30482179373871
+      parameters:
+        chatHistorySetting:
+            chatHistoryRound: 3
+            enableChatHistory: false
+        intents:
+            - name: 洗衣机设备问题
+        llmParam:
+            chatHistoryRound: 3
+            enableChatHistory: false
+            frequencyPenalty: 0
+            generationDiversity: default_val
+            maxTokens: 4096
+            modelName: 豆包·1.6·极致速度
+            modelType: 1.749615117e+09
+            parameters:
+                max_completion_tokens: 0
+            prompt:
+                type: string
+                value:
+                    content: '{{query}}'
+                    type: literal
+            responseFormat: 2
+            systemPrompt:
+                type: string
+                value:
+                    content: ""
+                    type: literal
+            temperature: 1
+            thinkingType: disabled
+            topP: 0.7
+        mode: top_speed
+        node_inputs:
+            - name: query
+              input:
+                value:
+                    path: output
+                    ref_node: "138707"
+        node_outputs:
+            classificationId:
+                type: integer
+                value: null
+            reason:
+                type: string
+                value: null
+        settingOnError:
+            processType: 1
+            retryTimes: 0
+            timeoutMs: 60000
+        version: "2"
+edges:
+    - source_node: "100001"
+      target_node: "145978"
+    - source_node: "113302"
+      target_node: "900001"
+    - source_node: "145978"
+      target_node: "165159"
+      source_port: "false"
+    - source_node: "145978"
+      target_node: "185368"
+      source_port: "true"
+    - source_node: "145978"
+      target_node: "186797"
+      source_port: true_1
+    - source_node: "138707"
+      target_node: "190617"
+    - source_node: "190617"
+      target_node: "161610"
+    - source_node: "161610"
+      target_node: "113302"
+    - source_node: "165159"
+      target_node: "138707"
+    - source_node: "179294"
+      target_node: "138707"
+    - source_node: "137871"
+      target_node: "179294"
+    - source_node: "185368"
+      target_node: "137871"
+    - source_node: "186797"
+      target_node: "1564147"
+    - source_node: "1564147"
+      target_node: "1734505"
+    - source_node: "1734505"
+      target_node: "113302"

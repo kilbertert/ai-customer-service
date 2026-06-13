@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "ts": "2026-06-12T21:59:55.927854",
+    "api_base": "https://ai.trendpower.cc/v1",
+    "end_user": "h5-frontend-user",
+    "api_key_prefix": "app-0mLH...",
+    "input_text_key": "input_text",
+    "output_key": "output",
+    "verify_ssl": false
+  },
+  "V2_upload_status": 404,
+  "V2_upload_content_type": "text/html",
+  "V2_upload_body": "<html>\n<head><title>404 Not Found</title></head>\n<body>\n<center><h1>404 Not Found</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>",
+  "V9_streaming_status": 404,
+  "V9_streaming_content_type": "text/html",
+  "V9_streaming_raw_bytes_len": 138,
+  "V9_streaming_raw_text": "<html>\n<head><title>404 Not Found</title></head>\n<body>\n<center><h1>404 Not Found</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>",
+  "V9_streaming_event_count": 0,
+  "V9_streaming_event_types": [],
+  "V9_streaming_event_samples": [],
+  "V10a_bad_key_status": 404,
+  "V10a_bad_key_body": "<html>\n<head><title>404 Not Found</title></head>\n<body>\n<center><h1>404 Not Found</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>",
+  "V10b_workflow_fail_status": 404,
+  "V10b_workflow_fail_content_type": "text/html",
+  "V10b_workflow_fail_body": "<html>\n<head><title>404 Not Found</title></head>\n<body>\n<center><h1>404 Not Found</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>"
+}

@@ -1,0 +1,220 @@
+{
+  "_meta": {
+    "ts": "2026-06-12T22:25:40.217385",
+    "api_base": "http://124.243.178.156:8501/v1",
+    "end_user": "h5-frontend-user",
+    "v1_api_key_prefix": "app-0mLH...",
+    "v2_api_key_prefix": null,
+    "verify_ssl": false,
+    "yml_bytes": 4033
+  },
+  "step0_platform": {
+    "platform_probe": [
+      {
+        "endpoint": "<api>/info",
+        "method": "GET",
+        "status": 200,
+        "body": {
+          "name": "China_charge_seriver",
+          "description": "智能对话平台 - 面向海外用户的多模态充电桩售后全流程客服助手。支持文本/图片/语音输入，结合视觉理解、ASR 与知识库检索，为用户提供设备答疑、故障排查与操作指导。",
+          "tags": [],
+          "mode": "workflow",
+          "author_name": "qushiyun"
+        }
+      },
+      {
+        "endpoint": "<api>/parameters",
+        "method": "GET",
+        "status": 200,
+        "body": {
+          "opening_statement": "",
+          "suggested_questions": [],
+          "suggested_questions_after_answer": {
+            "enabled": false
+          },
+          "speech_to_text": {
+            "enabled": false
+          },
+          "text_to_speech": {
+            "enabled": false,
+            "language": "",
+            "voice": ""
+          },
+          "retriever_resource": {
+            "enabled": true
+          },
+          "annotation_reply": {
+            "enabled": false
+          },
+          "more_like_this": {
+            "enabled": false
+          },
+          "user_input_form": [
+            {
+              "paragraph": {
+                "label": "input_text",
+                "max_length": 2000,
+                "options": [],
+                "required": false,
+                "type": "paragraph",
+                "variable": "input_text"
+              }
+            },
+            {
+              "text-input": {
+                "label": "language",
+                "max_length": 48,
+                "options": [],
+                "required": false,
+                "type": "text-input",
+                "variable": "language"
+              }
+            },
+            {
+              "file": {
+                "label": "input_image",
+                "type": "file",
+                "variable": "input_image",
+                "required": false,
+                "allowed_file_types": [
+                  "image"
+                ],
+                "allowed_file_extensions": [
+                  ".jpg",
+                  ".jpeg",
+                  ".png",
+                  ".webp",
+                  ".gif"
+                ],
+                "allowed_file_upload_methods": [
+                  "local_file",
+                  "remote_url"
+                ]
+              }
+            },
+            {
+              "file": {
+                "label": "input_audio",
+                "type": "file",
+                "variable": "input_audio",
+                "required": false,
+                "allowed_file_types": [
+                  "audio"
+                ],
+                "allowed_file_extensions": [
+                  ".mp3",
+                  ".m4a",
+                  ".wav",
+                  ".webm",
+                  ".amr"
+                ],
+                "allowed_file_upload_methods": [
+                  "local_file",
+                  "remote_url"
+                ]
+              }
+            }
+          ],
+          "sensitive_word_avoidance": {
+            "enabled": false
+          },
+          "file_upload": {
+            "image": {
+              "enabled": false,
+              "number_limits": 1,
+              "transfer_methods": [
+                "local_file",
+                "remote_url"
+              ]
+            },
+            "enabled": true,
+            "allowed_file_types": [
+              "image",
+              "audio"
+            ],
+            "allowed_file_extensions": [
+              ".JPG",
+              ".JPEG",
+              ".PNG",
+              ".GIF",
+              ".WEBP",
+              ".MP3",
+              ".M4A",
+              ".WAV",
+              ".WEBM",
+              ".AMR"
+            ],
+            "allowed_file_upload_methods": [
+              "local_file",
+              "remote_url"
+            ],
+            "number_limits": 1,
+            "fileUploadConfig": {
+              "file_size_limit": 15,
+              "batch_count_limit": 5,
+              "file_upload_limit": 20,
+              "image_file_size_limit": 10,
+              "video_file_size_limit": 100,
+              "audio_file_size_limit": 50,
+              "workflow_file_upload_limit": 10,
+              "image_file_batch_limit": 10,
+              "single_chunk_attachment_limit": 10,
+              "attachment_image_file_size_limit": 2
+            }
+          },
+          "system_parameters": {
+            "image_file_size_limit": 10,
+            "video_file_size_limit": 100,
+            "audio_file_size_limit": 50,
+            "file_size_limit": 15,
+            "workflow_file_upload_limit": 10
+          }
+        }
+      },
+      {
+        "endpoint": "<api>/apps",
+        "method": "GET",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/workflows",
+        "method": "GET",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/datasets",
+        "method": "GET",
+        "status": 401,
+        "body": {
+          "code": "unauthorized",
+          "message": "Access token is invalid",
+          "status": 401
+        }
+      }
+    ]
+  },
+  "step1_import": {
+    "import_attempts": [
+      {
+        "endpoint": "<api>/apps/import",
+        "mode": "multipart",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/apps/import",
+        "mode": "json",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/apps/imports",
+        "mode": "multipart",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      }
+    ]
+  }
+}

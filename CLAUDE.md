@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `nginx/` contains the reverse-proxy config used in Docker deployments.
 - `scrapling-service/` is a standalone FastAPI microservice that performs HTTP fetching with `curl_cffi` (TLS-impersonated Chrome 120) and `readability-lxml` content extraction, with `httpx` fallback when `curl_cffi` fails. The backend talks to it via HTTP on port 8001 (internal Docker network).
 - `docker-compose.yml` is the primary local/dev/prod orchestration entrypoint.
+- `china_charge_kf/` is a parallel Dify-Workflow prototype (formerly a standalone git repo, absorbed as a subdir on 2026-06-13 in commit `5981f65`). It contains an alternate FastAPI backend (`app_dify/`) and the Dify workflow yml files used by the M0/M1/M2 design effort. **Status: prototype / reference — not integrated with the basjoo `backend/` above.** See `china_charge_kf/CLAUDE.md` for its own project context.
 
 ## Common commands
 

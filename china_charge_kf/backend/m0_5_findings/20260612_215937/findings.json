@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "ts": "2026-06-12T21:59:37.800646",
+    "api_base": "https://ai.trendpower.cc/v1",
+    "end_user": "h5-frontend-user",
+    "api_key_prefix": "app-0mLH...",
+    "input_text_key": "input_text",
+    "output_key": "output",
+    "verify_ssl": true
+  },
+  "V2_upload_error": "ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'ai.trendpower.cc'. (_ssl.c:1028)",
+  "V9_streaming_error": "ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'ai.trendpower.cc'. (_ssl.c:1028)",
+  "V10a_bad_key_error": "ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'ai.trendpower.cc'. (_ssl.c:1028)",
+  "V10b_workflow_fail_error": "ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'ai.trendpower.cc'. (_ssl.c:1028)"
+}

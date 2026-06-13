@@ -1,0 +1,229 @@
+app:
+  description: Basjoo 充电桩售后客服 v2 - 单 LLM 链
+  icon: "\U0001F4A7"
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: china_charge_seriver_v2
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.1.5
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+        - .JPG
+        - .JPEG
+        - .PNG
+        - .GIF
+        - .WEBP
+        - .MP3
+        - .M4A
+        - .WAV
+        - .WEBM
+        - .AMR
+      allowed_file_types:
+        - image
+        - audio
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: true
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: true
+        number_limits: 1
+        transfer_methods:
+          - local_file
+          - remote_url
+      number_limits: 5
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+      - id: edge-2001-2007
+        source: '2001'
+        sourceHandle: source
+        target: '2007'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: start
+          targetType: llm
+          isInIteration: false
+      - id: edge-2007-2015
+        source: '2007'
+        sourceHandle: source
+        target: '2015'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: end
+          isInIteration: false
+    nodes:
+      - id: '2001'
+        position:
+          x: 0
+          y: 0
+        positionAbsolute:
+          x: 0
+          y: 0
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 90
+        selected: false
+        data:
+          type: start
+          title: 开始
+          desc: 接收文本 + 可选的图片/音频上传文件引用
+          selected: false
+          variables:
+            - label: input_text
+              max_length: 2000
+              options: []
+              required: false
+              type: paragraph
+              variable: input_text
+            - label: language
+              max_length: 48
+              options: []
+              required: false
+              type: text-input
+              variable: language
+            - label: input_img_id
+              type: file-list
+              variable: input_img_id
+              required: false
+              allowed_file_types:
+                - image
+              allowed_file_extensions:
+                - .jpg
+                - .jpeg
+                - .png
+                - .webp
+                - .gif
+              allowed_file_upload_methods:
+                - local_file
+                - remote_url
+            - label: input_audio_id
+              type: file-list
+              variable: input_audio_id
+              required: false
+              allowed_file_types:
+                - audio
+              allowed_file_extensions:
+                - .mp3
+                - .m4a
+                - .wav
+                - .webm
+                - .amr
+              allowed_file_upload_methods:
+                - local_file
+                - remote_url
+      - id: '2007'
+        position:
+          x: 400
+          y: 0
+        positionAbsolute:
+          x: 400
+          y: 0
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 98
+        selected: false
+        data:
+          type: llm
+          title: 大模型
+          desc: doubao-seed-2-0-lite 单链 LLM (vision 启用, input_img_id 走视觉)
+          selected: false
+          model:
+            provider: volcengine_maas
+            name: doubao-seed-2-0-lite
+            mode: chat
+            completion_params:
+              temperature: 0.5
+              max_tokens: 4096
+          prompt_template:
+            - id: sys-prompt
+              role: system
+              text: |
+                # 角色定义
+                你是面向海外用户的充电桩售后诊断与支持助手，专精于充电桩故障排查、
+                日常使用指导、售后流程解答。回答风格：友好、耐心、专业，必要时配合
+                emoji 让对话更轻松。
+
+                # 目标
+                1. 准确诊断用户问题，给出可执行的解决步骤
+                2. 用用户提问的语言回答（参考 {{#2001.language#}}）
+                3. 涉及电气安全、紧急故障时优先提示断电 + 联系专业人员
+
+                # 优先级
+                1. 安全提示 > 故障诊断 > 使用指导 > 闲聊
+
+                # 输出要求
+                - 直接输出最终客服回复
+                - 不输出 JSON、markdown 标题、内部分析过程
+                - 回复要兼顾专业性、可执行性和客服服务感
+            - id: user-prompt
+              role: user
+              text: |
+                用户问题：{{#2001.input_text#}}
+          context:
+            enabled: false
+            variable_selector: []
+          vision:
+            enabled: true
+            variable_selector:
+              - '2001'
+              - input_img_id
+      - id: '2015'
+        position:
+          x: 800
+          y: 0
+        positionAbsolute:
+          x: 800
+          y: 0
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 90
+        selected: false
+        data:
+          type: end
+          title: 结束
+          desc: 返回 LLM 输出文本
+          selected: false
+          outputs:
+            - value_selector:
+                - '2007'
+                - text
+              variable: output
+    viewport:
+      x: 80
+      y: 80
+      zoom: 0.6

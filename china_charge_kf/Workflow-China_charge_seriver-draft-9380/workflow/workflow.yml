@@ -1,0 +1,787 @@
+app:
+  description: 智能对话平台 - 面向海外用户的多模态充电桩售后全流程客服助手。支持文本/图片/语音输入，结合视觉理解、ASR 与知识库检索，为用户提供设备答疑、故障排查与操作指导。
+  icon: "\U0001F4A7"
+  icon_background: '#E0F7FA'
+  mode: workflow
+  name: China_charge_seriver
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.1.5
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+        - .JPG
+        - .JPEG
+        - .PNG
+        - .GIF
+        - .WEBP
+        - .MP3
+        - .M4A
+        - .WAV
+        - .WEBM
+        - .AMR
+      allowed_file_types:
+        - image
+        - audio
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: true
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 1
+        transfer_methods:
+          - local_file
+          - remote_url
+      number_limits: 1
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+      - id: edge-start-ifelse
+        source: '1001'
+        sourceHandle: source
+        target: '1002'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: start
+          targetType: if-else
+          isInIteration: false
+      - id: edge-ifelse-kb1
+        source: '1002'
+        sourceHandle: 'true'
+        target: '1006'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: if-else
+          targetType: knowledge-retrieval
+          isInIteration: false
+      - id: edge-kb1-llm1
+        source: '1006'
+        sourceHandle: source
+        target: '1007'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: knowledge-retrieval
+          targetType: llm
+          isInIteration: false
+      - id: edge-llm1-vagg
+        source: '1007'
+        sourceHandle: source
+        target: '1014'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: variable-aggregator
+          isInIteration: false
+      - id: edge-ifelse-asr
+        source: '1002'
+        sourceHandle: case_audio
+        target: '1008'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: if-else
+          targetType: http-request
+          isInIteration: false
+      - id: edge-asr-code
+        source: '1008'
+        sourceHandle: source
+        target: '1011'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: http-request
+          targetType: code
+          isInIteration: false
+      - id: edge-code-kb2
+        source: '1011'
+        sourceHandle: source
+        target: '1009'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: code
+          targetType: knowledge-retrieval
+          isInIteration: false
+      - id: edge-kb2-llm2
+        source: '1009'
+        sourceHandle: source
+        target: '1010'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: knowledge-retrieval
+          targetType: llm
+          isInIteration: false
+      - id: edge-llm2-vagg
+        source: '1010'
+        sourceHandle: source
+        target: '1014'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: variable-aggregator
+          isInIteration: false
+      - id: edge-ifelse-kb3
+        source: '1002'
+        sourceHandle: 'false'
+        target: '1012'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: if-else
+          targetType: knowledge-retrieval
+          isInIteration: false
+      - id: edge-kb3-llm3
+        source: '1012'
+        sourceHandle: source
+        target: '1013'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: knowledge-retrieval
+          targetType: llm
+          isInIteration: false
+      - id: edge-llm3-vagg
+        source: '1013'
+        sourceHandle: source
+        target: '1014'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: llm
+          targetType: variable-aggregator
+          isInIteration: false
+      - id: edge-vagg-end
+        source: '1014'
+        sourceHandle: source
+        target: '1015'
+        targetHandle: target
+        type: custom
+        data:
+          sourceType: variable-aggregator
+          targetType: end
+          isInIteration: false
+    nodes:
+      - id: '1001'
+        position:
+          x: 0
+          y: 300
+        positionAbsolute:
+          x: 0
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 150
+        selected: false
+        data:
+          type: start
+          title: 开始
+          desc: 接收文本 + 可选的图片 / 音频上传文件
+          selected: false
+          variables:
+            - label: input_text
+              max_length: 2000
+              options: []
+              required: false
+              type: paragraph
+              variable: input_text
+            - label: language
+              max_length: 48
+              options: []
+              required: false
+              type: text-input
+              variable: language
+            - label: input_image
+              type: file
+              variable: input_image
+              required: false
+              allowed_file_types:
+                - image
+              allowed_file_extensions:
+                - .jpg
+                - .jpeg
+                - .png
+                - .webp
+                - .gif
+              allowed_file_upload_methods:
+                - local_file
+                - remote_url
+            - label: input_audio
+              type: file
+              variable: input_audio
+              required: false
+              allowed_file_types:
+                - audio
+              allowed_file_extensions:
+                - .mp3
+                - .m4a
+                - .wav
+                - .webm
+                - .amr
+              allowed_file_upload_methods:
+                - local_file
+                - remote_url
+      - id: '1002'
+        position:
+          x: 350
+          y: 300
+        positionAbsolute:
+          x: 350
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 200
+        selected: false
+        data:
+          type: if-else
+          title: 选择器
+          desc: 按上传文件类型选择处理分支：图片 / 语音 / 纯文本
+          selected: false
+          logical_operator: and
+          cases:
+            - case_id: 'true'
+              id: 'true'
+              logical_operator: and
+              conditions:
+                - id: cond-img
+                  varType: file
+                  variable_selector:
+                    - '1001'
+                    - input_image
+                  comparison_operator: is not empty
+                  value: ''
+            - case_id: case_audio
+              id: case_audio
+              logical_operator: and
+              conditions:
+                - id: cond-audio
+                  varType: file
+                  variable_selector:
+                    - '1001'
+                    - input_audio
+                  comparison_operator: is not empty
+                  value: ''
+      - id: '1006'
+        position:
+          x: 700
+          y: 80
+        positionAbsolute:
+          x: 700
+          y: 80
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 92
+        selected: false
+        data:
+          type: knowledge-retrieval
+          title: 知识库检索_图片分支
+          desc: 用用户文本作为检索 query；若用户没填文字，图片内容将由多模态 LLM 直接理解
+          selected: false
+          query_variable_selector:
+            - '1001'
+            - input_text
+          dataset_ids:
+            - 'REPLACE_WITH_YOUR_DIFY_DATASET_ID'
+          retrieval_mode: single
+          multiple_retrieval_config:
+            top_k: 1
+            score_threshold: 0.79
+            score_threshold_enabled: true
+            reranking_enable: true
+            reranking_mode: reranking_model
+            reranking_model:
+              reranking_provider_name: ''
+              reranking_model_name: ''
+            weights: null
+      - id: '1007'
+        position:
+          x: 1050
+          y: 80
+        positionAbsolute:
+          x: 1050
+          y: 80
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 120
+        selected: false
+        data:
+          type: llm
+          title: 大模型_图片分支
+          desc: doubao-seed-2.0-lite 基于图片 + 文本 + 知识库提供海外充电桩售后支持
+          selected: false
+          model:
+            provider: volcengine_maas
+            name: doubao-seed-2-0-lite
+            mode: chat
+            completion_params:
+              temperature: 0.5
+              top_p: 1
+              max_tokens: 4096
+              frequency_penalty: 0
+          prompt_template:
+            - id: sys-prompt
+              role: system
+              text: |-
+                # 角色定义
+                你是一名面向海外用户的充电桩售后诊断与支持助手，擅长根据用户提交的文本、图片、语音转写信息，并结合知识库内容，对充电桩相关问题进行故障判断、风险识别、操作指导和售后分流。
+
+                # 目标
+                你的目标是建立完整的问题处理闭环：
+                - 判断用户是在咨询、报障、安装求助还是使用异常
+                - 尽可能通过远程指导帮助用户完成自助排查
+                - 无法确认时，明确指出需要补充的信息
+                - 无法远程解决时，清楚指引用户进入下一步售后流程
+
+                # 诊断优先级
+                请按以下优先级处理问题：
+                1. 安全风险优先：如漏电、过热、异味、火花、烧焦痕迹、异常断电，先提醒停用
+                2. 故障定位优先：识别错误码、指示灯状态、屏幕提示、接口连接状态、网络状态
+                3. 操作恢复优先：提供可执行的排查步骤，如重启设备、检查供电、重新插枪、确认车辆状态、检查网络/App 绑定
+                4. 售后流转优先：若仍无法解决，说明建议提交工单或联系人工售后，并告知应准备的信息
+
+                # 多模态处理规则
+                - 文本：理解问题背景、现象、诉求和历史操作
+                - 图片：识别设备型号标签、安装环境、接口连接、指示灯、错误码、App 截图、物理损伤
+                - 语音：基于转写文本理解问题；若表达不完整，结合上下文补足
+                - 知识库：作为主要依据；若知识库不足，只能给出谨慎的通用建议，不能编造明确结论
+
+                # 回复规则
+                - 优先给出明确判断：已知问题、可能原因、暂无法确认
+                - 步骤要简洁、可执行、按顺序排列
+                - 对用户不明确的描述，要主动指出还缺什么关键信息
+                - 不要输出过长的大段说明，避免让用户抓不住重点
+                - 不要假设现场条件一定满足，涉及电力或安装操作时应保持谨慎
+                - 若知识库没有足够依据，不得虚构保修政策、硬件结论或维修结果
+
+                # 输出要求
+                - 输出语言为{{#1001.language#}}
+                - 直接输出最终客服回复
+                - 不输出 JSON、markdown 标题、内部分析过程
+                - 回复要兼顾专业性、可执行性和客服服务感
+            - id: user-prompt
+              role: user
+              text: |-
+                用户问题：{{#1001.input_text#}}
+
+                参考资料：
+                {{#context#}}
+
+                请结合上传的图片、用户问题和参考资料回答用户关于充电桩设备的疑问，优先完成故障判断、风险识别和操作指导；如果参考资料不足，请明确说明并给出谨慎建议。
+          context:
+            enabled: true
+            variable_selector:
+              - '1006'
+              - result
+          vision:
+            enabled: true
+            configs:
+              detail: high
+              variable_selector:
+                - '1001'
+                - input_image
+      - id: '1008'
+        position:
+          x: 700
+          y: 300
+        positionAbsolute:
+          x: 700
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 154
+        selected: false
+        data:
+          type: http-request
+          title: ASR 语音转文字
+          desc: 调用内部 FunASR 适配服务，将 Dify 音频文件 URL 转成可用于知识库检索的文本
+          selected: false
+          method: post
+          url: http://backend-dify-internal:8012/api/asr/funasr/transcribe
+          authorization:
+            type: no-auth
+            config: null
+          headers: 'Content-Type:application/json'
+          params: ''
+          body:
+            type: json
+            data: '{"audio_url": "{{#1001.input_audio.url#}}", "language": "{{#1001.language#}}", "source": "dify-workflow"}'
+          timeout:
+            max_connect_timeout: 30
+            max_read_timeout: 180
+            max_write_timeout: 60
+      - id: '1011'
+        position:
+          x: 1050
+          y: 300
+        positionAbsolute:
+          x: 1050
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 80
+        selected: false
+        data:
+          type: code
+          title: 代码_提取语音文本
+          desc: 解析内部 FunASR 适配服务返回的 JSON，优先读取 text，并兼容旧 data.text 结构
+          selected: false
+          code_language: python3
+          code: |
+            import json
+
+            def main(asr_body: str) -> dict:
+                try:
+                    data = json.loads(asr_body) if isinstance(asr_body, str) else asr_body
+                except Exception:
+                    return {"text": ""}
+
+                text = ""
+                try:
+                    text = (
+                        data.get("text", "")
+                        or data.get("data", {}).get("text", "")
+                        or ""
+                    )
+                except Exception:
+                    text = ""
+
+                return {"text": text}
+          variables:
+            - value_selector:
+                - '1008'
+                - body
+              variable: asr_body
+          outputs:
+            text:
+              type: string
+              children: null
+      - id: '1009'
+        position:
+          x: 1400
+          y: 300
+        positionAbsolute:
+          x: 1400
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 92
+        selected: false
+        data:
+          type: knowledge-retrieval
+          title: 知识库检索_语音分支
+          desc: 用 ASR 识别出的文本作为检索 query
+          selected: false
+          query_variable_selector:
+            - '1011'
+            - text
+          dataset_ids:
+            - 'REPLACE_WITH_YOUR_DIFY_DATASET_ID'
+          retrieval_mode: single
+          multiple_retrieval_config:
+            top_k: 1
+            score_threshold: 0.71
+            score_threshold_enabled: true
+            reranking_enable: true
+            reranking_mode: reranking_model
+            reranking_model:
+              reranking_provider_name: ''
+              reranking_model_name: ''
+            weights: null
+      - id: '1010'
+        position:
+          x: 1750
+          y: 300
+        positionAbsolute:
+          x: 1750
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 120
+        selected: false
+        data:
+          type: llm
+          title: 大模型_语音分支
+          desc: doubao-seed-2.0-lite 基于语音转写 + 知识库提供海外充电桩售后支持
+          selected: false
+          model:
+            provider: volcengine_maas
+            name: doubao-seed-2-0-lite
+            mode: chat
+            completion_params:
+              temperature: 0.7
+              top_p: 1
+              max_tokens: 2200
+          prompt_template:
+            - id: sys-prompt
+              role: system
+              text: |-
+                # 角色定义
+                你是一名面向海外用户的充电桩售后诊断与支持助手，擅长根据用户提交的文本、图片、语音转写信息，并结合知识库内容，对充电桩相关问题进行故障判断、风险识别、操作指导和售后分流。
+
+                # 目标
+                你的目标是建立完整的问题处理闭环：
+                - 判断用户是在咨询、报障、安装求助还是使用异常
+                - 尽可能通过远程指导帮助用户完成自助排查
+                - 无法确认时，明确指出需要补充的信息
+                - 无法远程解决时，清楚指引用户进入下一步售后流程
+
+                # 诊断优先级
+                请按以下优先级处理问题：
+                1. 安全风险优先：如漏电、过热、异味、火花、烧焦痕迹、异常断电，先提醒停用
+                2. 故障定位优先：识别错误码、指示灯状态、屏幕提示、接口连接状态、网络状态
+                3. 操作恢复优先：提供可执行的排查步骤，如重启设备、检查供电、重新插枪、确认车辆状态、检查网络/App 绑定
+                4. 售后流转优先：若仍无法解决，说明建议提交工单或联系人工售后，并告知应准备的信息
+
+                # 多模态处理规则
+                - 文本：理解问题背景、现象、诉求和历史操作
+                - 图片：识别设备型号标签、安装环境、接口连接、指示灯、错误码、App 截图、物理损伤
+                - 语音：基于转写文本理解问题；若表达不完整，结合上下文补足
+                - 知识库：作为主要依据；若知识库不足，只能给出谨慎的通用建议，不能编造明确结论
+
+                # 回复规则
+                - 优先给出明确判断：已知问题、可能原因、暂无法确认
+                - 步骤要简洁、可执行、按顺序排列
+                - 对用户不明确的描述，要主动指出还缺什么关键信息
+                - 不要输出过长的大段说明，避免让用户抓不住重点
+                - 不要假设现场条件一定满足，涉及电力或安装操作时应保持谨慎
+                - 若知识库没有足够依据，不得虚构保修政策、硬件结论或维修结果
+
+                # 输出要求
+                - 输出语言为{{#1001.language#}}
+                - 直接输出最终客服回复
+                - 不输出 JSON、markdown 标题、内部分析过程
+                - 回复要兼顾专业性、可执行性和客服服务感
+            - id: user-prompt
+              role: user
+              text: |-
+                用户问题（来自语音）：{{#1011.text#}}
+
+                参考资料：
+                {{#context#}}
+
+                请基于语音转写文本和参考资料回答用户关于充电桩设备的问题，优先完成故障判断、风险识别和操作指导；如果参考资料不足，请明确说明并给出谨慎建议。
+          context:
+            enabled: true
+            variable_selector:
+              - '1009'
+              - result
+          vision:
+            enabled: false
+      - id: '1012'
+        position:
+          x: 700
+          y: 520
+        positionAbsolute:
+          x: 700
+          y: 520
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 92
+        selected: false
+        data:
+          type: knowledge-retrieval
+          title: 知识库检索_纯文本分支
+          desc: 直接用 input_text 作为 query
+          selected: false
+          query_variable_selector:
+            - '1001'
+            - input_text
+          dataset_ids:
+            - 'REPLACE_WITH_YOUR_DIFY_DATASET_ID'
+          retrieval_mode: single
+          multiple_retrieval_config:
+            top_k: 1
+            score_threshold: 0.79
+            score_threshold_enabled: true
+            reranking_enable: true
+            reranking_mode: reranking_model
+            reranking_model:
+              reranking_provider_name: ''
+              reranking_model_name: ''
+            weights: null
+      - id: '1013'
+        position:
+          x: 1050
+          y: 520
+        positionAbsolute:
+          x: 1050
+          y: 520
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 120
+        selected: false
+        data:
+          type: llm
+          title: 大模型_纯文本分支
+          desc: doubao-seed-2.0-lite 基于文本 + 知识库提供海外充电桩售后支持
+          selected: false
+          model:
+            provider: volcengine_maas
+            name: doubao-seed-2-0-lite
+            mode: chat
+            completion_params:
+              temperature: 0.5
+              top_p: 1
+              max_tokens: 4096
+              frequency_penalty: 0
+          prompt_template:
+            - id: sys-prompt
+              role: system
+              text: |-
+                # 角色定义
+                你是一名面向海外用户的充电桩售后诊断与支持助手，擅长根据用户提交的文本、图片、语音转写信息，并结合知识库内容，对充电桩相关问题进行故障判断、风险识别、操作指导和售后分流。
+
+                # 目标
+                你的目标是建立完整的问题处理闭环：
+                - 判断用户是在咨询、报障、安装求助还是使用异常
+                - 尽可能通过远程指导帮助用户完成自助排查
+                - 无法确认时，明确指出需要补充的信息
+                - 无法远程解决时，清楚指引用户进入下一步售后流程
+
+                # 诊断优先级
+                请按以下优先级处理问题：
+                1. 安全风险优先：如漏电、过热、异味、火花、烧焦痕迹、异常断电，先提醒停用
+                2. 故障定位优先：识别错误码、指示灯状态、屏幕提示、接口连接状态、网络状态
+                3. 操作恢复优先：提供可执行的排查步骤，如重启设备、检查供电、重新插枪、确认车辆状态、检查网络/App 绑定
+                4. 售后流转优先：若仍无法解决，说明建议提交工单或联系人工售后，并告知应准备的信息
+
+                # 多模态处理规则
+                - 文本：理解问题背景、现象、诉求和历史操作
+                - 图片：识别设备型号标签、安装环境、接口连接、指示灯、错误码、App 截图、物理损伤
+                - 语音：基于转写文本理解问题；若表达不完整，结合上下文补足
+                - 知识库：作为主要依据；若知识库不足，只能给出谨慎的通用建议，不能编造明确结论
+
+                # 回复规则
+                - 优先给出明确判断：已知问题、可能原因、暂无法确认
+                - 步骤要简洁、可执行、按顺序排列
+                - 对用户不明确的描述，要主动指出还缺什么关键信息
+                - 不要输出过长的大段说明，避免让用户抓不住重点
+                - 不要假设现场条件一定满足，涉及电力或安装操作时应保持谨慎
+                - 若知识库没有足够依据，不得虚构保修政策、硬件结论或维修结果
+
+                # 输出要求
+                - 输出语言为{{#1001.language#}}
+                - 直接输出最终客服回复
+                - 不输出 JSON、markdown 标题、内部分析过程
+                - 回复要兼顾专业性、可执行性和客服服务感
+            - id: user-prompt
+              role: user
+              text: |-
+                用户问题：{{#1001.input_text#}}
+
+                参考资料：
+                {{#context#}}
+
+                请基于用户文本和参考资料回答用户关于充电桩设备的问题，优先完成故障判断、风险识别和操作指导；如果参考资料不足，请明确说明并给出谨慎建议。
+          context:
+            enabled: true
+            variable_selector:
+              - '1012'
+              - result
+          vision:
+            enabled: false
+      - id: '1014'
+        position:
+          x: 2100
+          y: 300
+        positionAbsolute:
+          x: 2100
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 116
+        selected: false
+        data:
+          type: variable-aggregator
+          title: 变量聚合
+          desc: 聚合三个分支的 LLM 输出，谁先到取谁
+          selected: false
+          output_type: string
+          variables:
+            - - '1007'
+              - text
+            - - '1010'
+              - text
+            - - '1013'
+              - text
+          advanced_settings:
+            group_enabled: false
+            groups: []
+      - id: '1015'
+        position:
+          x: 2450
+          y: 300
+        positionAbsolute:
+          x: 2450
+          y: 300
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        height: 90
+        selected: false
+        data:
+          type: end
+          title: 结束
+          desc: 工作流终点，返回最终回答
+          selected: false
+          outputs:
+            - value_selector:
+                - '1014'
+                - output
+              variable: output
+    viewport:
+      x: 80
+      y: 80
+      zoom: 0.6

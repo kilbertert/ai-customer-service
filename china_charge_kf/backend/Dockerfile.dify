@@ -1,0 +1,20 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# 把整個 backend 拷進去(包含 coze 的 app/ 與 dify 的 app_dify/)
+COPY app /app/app
+COPY app_dify /app/app_dify
+
+EXPOSE 8012
+
+# 切到 Dify 后端
+CMD ["uvicorn", "app_dify.main:app", "--host", "0.0.0.0", "--port", "8012"]

@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "ts": "2026-06-12T22:24:25.435598",
+    "api_base": "http://124.243.178.156:8501/v1",
+    "end_user": "h5-frontend-user",
+    "api_key_prefix": "app-0mLH...",
+    "verify_ssl": false,
+    "yml_bytes": 4033
+  },
+  "step1_import": {
+    "import_attempts": [
+      {
+        "endpoint": "<api>/apps/import",
+        "mode": "multipart",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/apps/import",
+        "mode": "json",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      },
+      {
+        "endpoint": "<api>/apps/imports",
+        "mode": "multipart",
+        "status": 404,
+        "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+      }
+    ]
+  },
+  "step1_imported_app_id": null
+}
