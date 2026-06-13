@@ -151,6 +151,9 @@ init_test.py
 !backend/tests/test_*.py
 !backend/tests/*_test.py
 !backend/tests/init_test.py
+!china_charge_kf/backend/tests/test_*.py
+!china_charge_kf/backend/tests/*_test.py
+!china_charge_kf/backend/tests/init_test.py
 
 # OS生成的文件
 .Spotlight-V100
