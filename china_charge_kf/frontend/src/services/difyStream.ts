@@ -123,6 +123,9 @@ export async function* streamChat(
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
+  // M9.1 — strip <think>...</think> blocks across chunk boundaries so raw
+  // reasoning never enters the bubble DOM. See createThinkStripper() below.
+  const stripper = createThinkStripper()
 
   try {
     while (true) {
@@ -136,7 +139,8 @@ export async function* streamChat(
         const raw = buffer.slice(0, sepIndex)
         buffer = buffer.slice(sepIndex + 2)
         const event = parseEvent(raw)
-        if (event) yield event
+        if (!event) continue
+        for (const out of routeEvent(event, stripper)) yield out
       }
     }
 
@@ -144,8 +148,12 @@ export async function* streamChat(
     const tail = buffer.trim()
     if (tail) {
       const event = parseEvent(tail)
-      if (event) yield event
+      if (event) for (const out of routeEvent(event, stripper)) yield out
     }
+
+    // Stream done — release any trailing residual that never reached a non-delta event
+    const residual = stripper.flush()
+    if (residual) yield { type: 'message_delta', text: residual }
   } finally {
     try {
       reader.releaseLock()
@@ -153,6 +161,32 @@ export async function* streamChat(
       // reader may already be released by AbortSignal — ignore
     }
   }
+}
+
+/**
+ * M9.1 — Route a parsed SSE event through the <think> stripper.
+ *
+ * - message_delta: feed the text through the stripper; yield the safe-to-emit prefix
+ *   (may be empty if the chunk is entirely inside a think block).
+ * - any other event (session_started / message_complete / error / end):
+ *   flush the stripper first so any buffered safe-to-emit suffix lands as a final
+ *   delta BEFORE downstream consumers see the terminator event. M8.2
+ *   stripThinkTags still runs on message_complete.text as an idempotent final
+ *   safeguard — M9.1 + M8.2 form a defense-in-depth pair, not a replacement.
+ */
+function routeEvent(
+  event: DifyStreamEvent,
+  stripper: ThinkStripper,
+): DifyStreamEvent[] {
+  if (event.type === 'message_delta') {
+    const safeText = stripper.feed(event.text)
+    return safeText ? [{ type: 'message_delta', text: safeText }] : []
+  }
+  const flushed = stripper.flush()
+  const out: DifyStreamEvent[] = []
+  if (flushed) out.push({ type: 'message_delta', text: flushed })
+  out.push(event)
+  return out
 }
 
 export function parseEvent(rawBlock: string): DifyStreamEvent | null {
@@ -309,4 +343,115 @@ export interface AbortStatePatch {
 export function abortStatePatch(currentText: string | null | undefined): AbortStatePatch {
   if (!currentText) return { stopped: false, noResponse: true }
   return { stopped: true, noResponse: false }
+}
+
+// ============== M9.1 — stream-level <think> buffer ==============
+
+/**
+ * Strip <think>...</think> blocks across SSE chunk boundaries.
+ *
+ * Why hand-rolled vs per-chunk regex: real Dify v2 emits character-level tokens
+ * (~1-3 chars per chunk). The per-chunk regex `<think>[\s\S]*?</think>` only
+ * matches open+close in the SAME string. Across chunks the open and close
+ * never coexist, so per-chunk strip is a complete no-op on real Dify
+ * (see M9-PROMPT §1 / real-dify-per-chunk-strip-noop memory).
+ *
+ * Algorithm — three rules (M9-PROMPT §2):
+ *   1. Accumulate chunks into internal buffer
+ *   2. While NOT inside a think block:
+ *      - No `<think>` → emit all, clear buffer
+ *      - `<think>` found → emit prefix before it, set state to inside-think
+ *   3. While inside a think block:
+ *      - No `</think>` → hold all (wait for close)
+ *      - `</think>` found → skip past it, exit inside-think
+ *   4. Edge case — chunk boundary inside the tag characters: hold back any
+ *      trailing `<` (could be start of partial open or close tag) until next
+ *      chunk disambiguates it. The lookahead window is `len(tag) - 1` chars.
+ *
+ * flush() at stream end drops any unclosed think residue (model anomaly)
+ * plus releases any safe-to-emit suffix that drain() retained due to a
+ * trailing-`<` lookahead at end-of-stream.
+ */
+export interface ThinkStripper {
+  /**
+   * Feed a delta chunk; return the safe-to-emit prefix.
+   * Empty string means "hold everything; nothing to emit yet".
+   */
+  feed(chunk: string): string
+  /**
+   * Flush remaining buffered text at stream end.
+   * Drops any unclosed think residue. Returns any safe-to-emit suffix.
+   */
+  flush(): string
+}
+
+const THINK_OPEN_TAG = '<think>'
+const THINK_CLOSE_TAG = '</think>'
+
+export function createThinkStripper(): ThinkStripper {
+  let buffer = ''
+  let insideThink = false
+
+  function drain(): string {
+    let emit = ''
+    // Loop because one buffer may contain multiple think blocks + intervening text
+    // (M9-PROMPT §1.5 baseline shows 3 think blocks per real Dify response).
+    while (true) {
+      if (insideThink) {
+        const closeIdx = buffer.indexOf(THINK_CLOSE_TAG)
+        if (closeIdx === -1) {
+          // Inside think block, waiting for close. Hold ENTIRE buffer — we
+          // never emit anything from inside a think block, including any
+          // text that appears before a trailing partial-close prefix.
+          // The hold includes the partial close prefix so the next chunk can
+          // either confirm `</think>` (we then resume emitting) or override
+          // it as literal content (we drop it on flush).
+          const lastLt = buffer.lastIndexOf('<')
+          if (lastLt !== -1 && buffer.length - lastLt < THINK_CLOSE_TAG.length) {
+            buffer = buffer.slice(lastLt)
+          } else {
+            buffer = ''
+          }
+          return emit
+        }
+        // Skip past close tag, exit think mode, continue loop to drain remainder
+        buffer = buffer.slice(closeIdx + THINK_CLOSE_TAG.length)
+        insideThink = false
+      } else {
+        const openIdx = buffer.indexOf(THINK_OPEN_TAG)
+        if (openIdx === -1) {
+          // No open tag — hold trailing partial-open prefix (e.g. "<thi")
+          // so the next chunk can confirm or reject it as a real think tag.
+          const lastLt = buffer.lastIndexOf('<')
+          if (lastLt !== -1 && buffer.length - lastLt < THINK_OPEN_TAG.length) {
+            emit += buffer.slice(0, lastLt)
+            buffer = buffer.slice(lastLt)
+          } else {
+            emit += buffer
+            buffer = ''
+          }
+          return emit
+        }
+        // Found open tag — emit prefix before it, enter think mode
+        emit += buffer.slice(0, openIdx)
+        buffer = buffer.slice(openIdx + THINK_OPEN_TAG.length)
+        insideThink = true
+      }
+    }
+  }
+
+  return {
+    feed(chunk: string): string {
+      buffer += chunk
+      return drain()
+    },
+    flush(): string {
+      const rest = drain()
+      // Drop any leftover buffer residue — partial tag or unclosed think block.
+      // Per spec §2, unclosed `<think>` is treated as a model anomaly and discarded.
+      buffer = ''
+      insideThink = false
+      return rest
+    },
+  }
 }
