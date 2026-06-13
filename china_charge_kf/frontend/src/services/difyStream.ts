@@ -31,7 +31,10 @@ export type DifyStreamEvent =
   | { type: 'message_delta'; text: string }
   | {
       type: 'message_complete'
-      text: string
+      // M6.1 — text is nullable: backend `extract_output_text` may yield None on
+      // U2/U7/U10 paths (see backend/app_dify/dify_client.py extract_output_text).
+      // Frontend distinguishes "no reply" (null) from "empty reply" ('').
+      text: string | null
       total_tokens: number
       elapsed_time: number
     }
@@ -186,7 +189,9 @@ export function parseEvent(rawBlock: string): DifyStreamEvent | null {
     case 'message_complete':
       return {
         type: 'message_complete',
-        text: stringOrEmpty(parsed.text),
+        // M6.1 — preserve null vs '' distinction: null = backend yielded None,
+        // '' = backend yielded empty string. stringOrEmpty() would collapse both.
+        text: parsed.text === null ? null : stringOrEmpty(parsed.text),
         total_tokens: numberOrZero(parsed.total_tokens),
         elapsed_time: numberOrZero(parsed.elapsed_time),
       }
