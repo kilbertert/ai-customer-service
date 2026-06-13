@@ -526,9 +526,13 @@ function App() {
         controller.abort()
         streamControllerRef.current = null
         if (e instanceof DOMException && e.name === 'AbortError') {
-          // M6.3 — user stopped before upload finished
+          // M8.1-UI — same branching as message-send abort path:
+          // empty bubble → noResponse, partial text → stopped.
+          // (Voice/file upload aborts always happen before any text_chunk,
+          // so this almost always renders noResponse — but use the helper
+          // for consistency and zero-leak guarantee.)
           setMessages((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, stopped: true } : m)),
+            prev.map((m) => (m.id === assistantId ? { ...m, ...abortStatePatch(m.text) } : m)),
           )
           return
         }
