@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   streamChat,
+  stripThinkTags,
   DifyStreamError,
   type DifyErrorCode,
 } from './services/difyStream'
@@ -556,11 +557,16 @@ function App() {
           )
         } else if (ev.type === 'message_complete') {
           // M6.1 — null → "(no response)" placeholder; '' or text → use backend value
+          // M8.2 — defense-in-depth: strip <think>...</think> blocks that may
+          // slip through when straddling chunk boundaries or arriving via
+          // non-`output` fallback keys (backend extract_output_text covers
+          // workflow_finished.data.output only).
+          const completeText = ev.text === null ? null : stripThinkTags(ev.text)
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== assistantId) return m
-              if (ev.text === null && !m.text) return { ...m, text: '', noResponse: true }
-              return { ...m, text: ev.text ?? m.text ?? '', noResponse: false }
+              if (completeText === null && !m.text) return { ...m, text: '', noResponse: true }
+              return { ...m, text: completeText ?? m.text ?? '', noResponse: false }
             }),
           )
           setStreamError(null) // M6.4 — successful complete clears stale error

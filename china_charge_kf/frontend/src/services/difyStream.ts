@@ -260,3 +260,26 @@ function isAbortError(e: unknown): boolean {
     e.name === 'AbortError'
   )
 }
+
+// ============== M8.2 — defense-in-depth <think> strip ==============
+
+/**
+ * Strip `<think>...</think>` blocks (lazy / multi-line / case-insensitive).
+ *
+ * Why duplicated with backend `extract_output_text` (PR9 U7): backend strips
+ * thinking on workflow_finished.data.output extraction. This frontend pass is
+ * defense-in-depth for two paths backend cannot cover:
+ *   1) accumulated message_delta text (backend strips per-chunk only inside
+ *      Dify's text_chunk emitter — partial `<think>` straddling chunks slips through)
+ *   2) message_complete.text values produced by non-`output` fallback keys not
+ *      yet routed through extract_output_text (M8.2 surface area)
+ *
+ * Lazy `[\s\S]*?` matches across newlines without grabbing past the first `</think>`.
+ * `gi` flag — strip all occurrences, tolerate `<Think>` / `<THINK>`.
+ */
+const THINK_TAG_RE = /<think>[\s\S]*?<\/think>/gi
+
+export function stripThinkTags(text: string): string {
+  if (!text) return text
+  return text.replace(THINK_TAG_RE, '')
+}

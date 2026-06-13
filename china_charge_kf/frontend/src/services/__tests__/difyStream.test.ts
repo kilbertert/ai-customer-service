@@ -20,6 +20,7 @@ import {
   parseEvent,
   parseFields,
   streamChat,
+  stripThinkTags,
   type DifyStreamEvent,
 } from '../difyStream'
 
@@ -350,5 +351,42 @@ describe('streamChat — abort + errors', () => {
       language: '普通话',
       end_user: 'u-1',
     })
+  })
+})
+
+// ============== M8.2 — stripThinkTags helper ==============
+
+describe('stripThinkTags', () => {
+  it('removes a single inline <think> block', () => {
+    expect(stripThinkTags('hello<think>internal</think> world')).toBe('hello world')
+  })
+
+  it('removes multi-line <think> spanning newlines (lazy [\\s\\S]*?)', () => {
+    const input = 'before\n<think>line1\nline2\nline3</think>\nafter'
+    expect(stripThinkTags(input)).toBe('before\n\nafter')
+  })
+
+  it('removes multiple <think> blocks in one string (g flag)', () => {
+    const input = 'a<think>x</think>b<think>y</think>c'
+    expect(stripThinkTags(input)).toBe('abc')
+  })
+
+  it('is non-greedy — stops at first </think> (no over-strip)', () => {
+    // Lazy regex must match minimally; greedy would eat everything to last </think>
+    const input = '<think>first</think>KEEP_ME<think>second</think>'
+    expect(stripThinkTags(input)).toBe('KEEP_ME')
+  })
+
+  it('passes through text with no <think> blocks unchanged', () => {
+    expect(stripThinkTags('plain text 中文 🎉')).toBe('plain text 中文 🎉')
+  })
+
+  it('handles empty string', () => {
+    expect(stripThinkTags('')).toBe('')
+  })
+
+  it('tolerates uppercase/mixed-case <THINK> / <Think> (i flag)', () => {
+    expect(stripThinkTags('a<THINK>X</THINK>b')).toBe('ab')
+    expect(stripThinkTags('a<Think>X</Think>b')).toBe('ab')
   })
 })
