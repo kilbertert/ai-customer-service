@@ -25,5 +25,10 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    test: {
+      environment: 'happy-dom',
+      globals: false,
+      include: ['src/**/__tests__/**/*.test.ts'],
+    },
   }
 })

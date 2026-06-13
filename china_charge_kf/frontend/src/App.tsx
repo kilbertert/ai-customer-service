@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import {
+  streamChat,
+  DifyStreamError,
+  type DifyErrorCode,
+} from './services/difyStream'
+import { uploadFile, FileUploadError } from './services/fileUpload'
 
 // 兼容性更好的 UUID 生成函数
 function generateId(): string {
@@ -161,6 +167,30 @@ const languageParams: Record<Language, string> = {
   vi: '越南语',
 }
 
+// M5 — Dify streaming error codes → 用户可见文案 (三语同步)
+const streamErrorMessages: Record<DifyErrorCode, Record<Language, string>> = {
+  DIFY_AUTH: {
+    zh: '认证失败,请联系客服',
+    en: 'Authentication failed, please contact support',
+    vi: 'Xác thực thất bại, vui lòng liên hệ hỗ trợ',
+  },
+  DIFY_BAD_REQUEST: {
+    zh: '请求无效,请检查输入后重试',
+    en: 'Invalid request, please check your input and retry',
+    vi: 'Yêu cầu không hợp lệ, vui lòng kiểm tra và thử lại',
+  },
+  DIFY_UPSTREAM: {
+    zh: '服务暂时不可用,请稍后再试',
+    en: 'Service temporarily unavailable, please retry',
+    vi: 'Dịch vụ tạm thời không khả dụng, vui lòng thử lại',
+  },
+  DIFY_UNKNOWN: {
+    zh: '出错了,请稍后再试',
+    en: 'Something went wrong, please retry',
+    vi: 'Đã xảy ra lỗi, vui lòng thử lại',
+  },
+}
+
 const languageShort: Record<Language, string> = {
   zh: '中',
   en: 'EN',
@@ -211,6 +241,9 @@ function App() {
   const isRecordingRef = useRef<boolean>(false)
   // const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) || 'https://zcf.h5.qumall.qushiyun.com'
   const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) || ''
+  // M5 — feature flag: 默认走 streaming (Dify v2); 设为 "false" 走 legacy blocking (/api/chat)
+  const useStreaming =
+    (import.meta.env.VITE_USE_STREAMING as string | undefined) !== 'false'
   
   const t = translations[lang]
 
@@ -384,6 +417,26 @@ function App() {
     setMessages((prev) => [...prev, userMsg])
     setIsSending(true)
 
+    // M5 — streaming 仅支持 text + image;audio 走 legacy blocking (/api/chat → input_audio_id)
+    // 同时尊重 VITE_USE_STREAMING=false 强制回退
+    if (useStreaming && !audioBlob) {
+      try {
+        await handleSendStream(trimmed)
+      } catch (e) {
+        // 网络/解析兜底 — handleSendStream 内部已 catch DifyStreamError, 这里兜意外
+        setMessages((prev) => [
+          ...prev,
+          { id: generateId(), role: 'assistant', text: `${t.networkError}: ${String(e)}` },
+        ])
+      } finally {
+        setIsSending(false)
+        setText('')
+        setFile(null)
+        setAudioBlob(null)
+      }
+      return
+    }
+
     try {
       const fd = new FormData()
       fd.append('text', trimmed)
@@ -423,6 +476,70 @@ function App() {
       setText('')
       setFile(null)
       setAudioBlob(null)
+    }
+  }
+
+  async function handleSendStream(trimmed: string) {
+    const assistantId = generateId()
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', text: '' }])
+
+    let fileIds: string[] = []
+    if (file) {
+      try {
+        const result = await uploadFile(file, apiBase)
+        fileIds = [result.file_id]
+      } catch (e) {
+        const detail =
+          e instanceof FileUploadError ? e.message : `${t.networkError}: ${String(e)}`
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, text: `${t.requestFailed}: ${detail}` } : m,
+          ),
+        )
+        return
+      }
+    }
+
+    try {
+      for await (const ev of streamChat({
+        text: trimmed,
+        file_ids: fileIds,
+        language: languageParams[lang],
+        apiBase,
+      })) {
+        if (ev.type === 'message_delta') {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, text: (m.text ?? '') + ev.text } : m,
+            ),
+          )
+        } else if (ev.type === 'message_complete') {
+          // message_complete.text 是 Dify 拼好的完整文本,优先覆盖 (防止 delta 丢字符)
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, text: ev.text || m.text || t.emptyResponse }
+                : m,
+            ),
+          )
+        } else if (ev.type === 'error') {
+          const msg = streamErrorMessages[ev.code]?.[lang] ?? ev.message
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, text: `${t.requestFailed}: ${msg}` } : m,
+            ),
+          )
+          return
+        }
+        // session_started / end — UI 无需渲染
+      }
+    } catch (e) {
+      const detail = e instanceof DifyStreamError ? e.message : `${t.networkError}: ${String(e)}`
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, text: `${t.requestFailed}: ${detail}` } : m,
+        ),
+      )
     }
   }
 
