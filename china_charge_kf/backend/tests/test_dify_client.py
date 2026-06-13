@@ -704,6 +704,92 @@ class TestParseSseEvent:
         })
         assert result["data"]["text"] == "答案"
 
+    # ---- M7.5: Dify v2 真实部署 (124.243.178.156:8501) 只在 data JSON 内嵌
+    # ---- `event` 键, SSE `event:` 字段为空。回归测试锁定 M7.5 热修行为。
+
+    def test_v2_workflow_started_fallback_to_inner_event(self):
+        from app_dify.dify_client import _parse_sse_event
+        result = _parse_sse_event({
+            "event": "",  # Dify v2 不写 SSE event 字段
+            "data": json.dumps({
+                "event": "workflow_started",
+                "data": {"workflow_run_id": "run-abc", "created_at": 1700000000},
+            }),
+        })
+        assert result == {
+            "event": "workflow_started",
+            "data": {"workflow_run_id": "run-abc", "created_at": 1700000000},
+        }
+
+    def test_v2_text_chunk_fallback_strips_thinking(self):
+        from app_dify.dify_client import _parse_sse_event
+        result = _parse_sse_event({
+            "event": "",
+            "data": json.dumps({
+                "event": "text_chunk",
+                "data": {"text": "<think>hmm</think>你好"},
+            }),
+        })
+        assert result == {
+            "event": "text_chunk",
+            "data": {"text": "你好"},
+        }
+
+    def test_v2_workflow_finished_succeeded_fallback(self):
+        from app_dify.dify_client import _parse_sse_event
+        result = _parse_sse_event({
+            "event": "",
+            "data": json.dumps({
+                "event": "workflow_finished",
+                "data": {
+                    "status": "succeeded",
+                    "outputs": {"output": "hi"},
+                    "total_tokens": 42,
+                    "elapsed_time": 1.23,
+                },
+            }),
+        })
+        assert result == {
+            "event": "workflow_finished",
+            "data": {
+                "status": "succeeded",
+                "outputs": {"output": "hi"},
+                "total_tokens": 42,
+                "elapsed_time": 1.23,
+            },
+        }
+
+    def test_v1_sse_event_field_wins_over_inner_event(self):
+        """v1 路径不变：SSE `event:` 有值时优先用, 不退到 payload.event。"""
+        from app_dify.dify_client import _parse_sse_event
+        result = _parse_sse_event({
+            "event": "text_chunk",
+            "data": json.dumps({
+                "event": "ignored_inner",
+                "data": {"text": "hi"},
+            }),
+        })
+        assert result["event"] == "text_chunk"
+
+    def test_v2_ping_inner_skipped(self):
+        """v2 的 ping 事件也走 fallback, 但仍要被跳过 (M0.5 §2.2.3)。"""
+        from app_dify.dify_client import _parse_sse_event
+        result = _parse_sse_event({
+            "event": "",
+            "data": json.dumps({"event": "ping"}),
+        })
+        assert result is None
+
+    def test_v2_no_event_anywhere_returns_empty_type(self):
+        """SSE 字段空 + payload 无 event 键 → 保留空 type, 让 SseProxyLayer 兜底跳过。"""
+        from app_dify.dify_client import _parse_sse_event
+        result = _parse_sse_event({
+            "event": "",
+            "data": json.dumps({"foo": "bar"}),
+        })
+        # 不会 return None (data 非空且 JSON 合法), event 字段保持空
+        assert result == {"event": "", "data": {"foo": "bar"}}
+
 
 # ============== upload_file ==============
 

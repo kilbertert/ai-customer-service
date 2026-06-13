@@ -143,6 +143,11 @@ def _parse_sse_event(event: dict[str, str]) -> dict[str, Any] | None:
     其中 outer `data:` JSON 永远含 `event` 和 `data` 两个 key，
     `data.data` 才是真正的 payload。本函数把外层 `data` 字段展平，
     让调用方用 `chunk["data"]["text"]` 而不是 `chunk["data"]["data"]["text"]`。
+
+    M7.5 兼容：真实部署 (124.243.178.156:8501) 的 Dify v2 workflow 不在 SSE
+    `event:` 字段上写类型, 只在 `data:` JSON 内嵌 `event` 键。若 SSE 字段为空,
+    退而读取 payload.event, 否则 SseProxyLayer 会把所有非 ping 事件当作未知
+    类型过滤掉, 前端收到 0 事件 (静默失败)。v1 路径不变。
     """
     event_type = (event.get("event") or "").strip()
     data_str = (event.get("data") or "").strip()
@@ -153,6 +158,12 @@ def _parse_sse_event(event: dict[str, str]) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         logger.warning("SSE data parse failed: %s", data_str[:200])
         return None
+
+    # M7.5: Dify v2 真实部署只把事件类型写在 data JSON 内, 兜底读取
+    if not event_type and isinstance(payload, dict):
+        inner_event = payload.get("event")
+        if isinstance(inner_event, str) and inner_event.strip():
+            event_type = inner_event.strip()
 
     # Skip ping (M0.5 §2.2.3 — 保活事件不外发)
     if event_type == "ping":

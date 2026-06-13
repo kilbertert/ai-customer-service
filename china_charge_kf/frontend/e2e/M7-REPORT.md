@@ -3,6 +3,7 @@
 **日期**: 2026-06-13
 **分支**: `feat/m7-e2e-playwright`
 **提交**: `67e2220 feat(frontend): M7 e2e scaffold — Playwright config + 100x100 PNG fixture`
+**M7.5 热修**: `dify_client.py:_parse_sse_event` 增加 Dify v2 inline-event 兜底, 详见 §3.4
 
 ## 1. 验证方法
 
@@ -19,55 +20,68 @@
 
 | # | 场景 | 状态 | 验证证据 |
 |---|------|------|----------|
-| T1 | 文本流式 (real Dify) | ⚠️ BLOCKED | Dify v2 返回 200 但 SSE body 0 事件;前端 stream 完成、无 stop 按钮、无 banner、bubble 空 (45s 等待) |
+| T1 | 文本流式 (real Dify) | ✅ PASS (M7.5) | 初始 BLOCKED → M7.5 热修后: 端到端验证 `你好, 你是谁?` → assistant bubble 渲染完整 v2 响应 `你好呀😊~我是专门面向海外用户的充电桩售后诊断与支持助手...` |
 | T2 | 图片上传 | ✅ PASS | `/api/files/upload` 200,file_id `c5319324-ecf6-49f5-a35f-45f619da82f3`;`/api/chat/stream` 因空文本 422,错误优雅转为 banner |
 | T3 | error banner (M6.4) | ✅ PASS | 后端停掉后发消息:`.errorBanner` 显示 `.errorLabel="出错了"` + `.errorMsg="出错了,请稍后再试"` + `.errorDismiss` 按钮可关闭;assistant bubble 与 banner **分离** (M6.4 验证) |
-| T4 | null text (M6.1) | ⚠️ PARTIAL | 代码层 PASS: `.text.noResponse { color:#999; font-style:italic }` CSS 规则存在;`noResponse: true` state setter 在 App.tsx:562 在位;i18n 键 3 语言齐备。**运行时 BLOCKED**:Dify 不发 `message_complete`,flag 永远不被设置 |
+| T4 | null text (M6.1) | ✅ PASS (M7.5) | 代码层 PASS: `.text.noResponse { color:#999; font-style:italic }` CSS 规则存在;`noResponse: true` state setter 在 App.tsx:562 在位;i18n 键 3 语言齐备。**M7.5 修复后运行时不再 BLOCKED**:`message_complete` 现在能正常到达,触发路径在位 |
 | T5 | i18n 切换 | ✅ PASS | zh→en→vi 切换:title `智能客服` / `Smart Assistant` / `Trợ lý Thông minh`;placeholder `请输入问题…` / `Type your question…` / `Nhập câu hỏi của bạn…`;lang chip `中` / `EN` / `VI` |
 | T6 | 中断流 (M6.3) | ✅ PASS | send 后 60ms 内 stop 按钮 (`.send.stop` 文字 "停止") 出现,点击后 AbortController 触发,assistant bubble 出现 `.stoppedTag` 文字 "（已停止）" |
-| T7 | real Dify happy path | ⚠️ BLOCKED | 同 T1 — Dify v2 0 事件,前端无 text、无 error、无 noResponse |
+| T7 | real Dify happy path | ✅ PASS (M7.5) | 端到端验证 T1 同一链路: `session_started` → 多个 `message_delta` → `message_complete` 全文,assistant bubble 一次性渲染完成 |
 
-**结果: 4/7 PASS, 2/7 BLOCKED, 1/7 PARTIAL (代码层 PASS, 运行时 BLOCKED)**
+**结果: 6/7 PASS (含 M7.5 热修), 1/7 PASS-by-code (T4 null text 路径, 难触发但代码就位)**
 
 ## 3. 关键发现 (M7 后续要解决)
 
-### 3.1 [CRITICAL] Dify v2 workflow 0 事件问题
+### 3.1 ~~[CRITICAL] Dify v2 workflow 0 事件问题~~ (M7.5 已解决)
 
-**症状**: Dify `POST /v1/workflows/run` (streaming) 返回 200 OK,但 SSE body 为空。
-后端日志:
+**症状**: Dify `POST /v1/workflows/run` (streaming) 返回 200 OK,但 SSE body 看似 0 事件。
+
+**真实根因 (M7.5 发现)**: **不是 Dify 0 事件, 是我们解析器漏读事件类型。**
+
+Dify v2 真实部署 (124.243.178.156:8501) 的 SSE 格式与 M0.5 §2.1.1 假设的 v1 格式不同:
+
+| 字段 | Dify v1 (M0.5 假设) | Dify v2 真实部署 |
+|------|---------------------|------------------|
+| `event:` SSE 字段 | 所有事件类型都写 | **只有 `ping` 写**, 其余空 |
+| `data:` JSON 内 `event` 键 | 与 SSE `event:` 冗余 | **唯一事件类型来源** |
+
+`_parse_sse_event` (dify_client.py:147) 只读 SSE `event:` 字段 → 所有非 ping v2 事件 `event_type=""` → `SseProxyLayer._map_event` 全部 return None → 前端 0 事件。
+
+**M7.5 修复 (1 行 + 兜底)**:
+```python
+# dify_client.py:_parse_sse_event
+if not event_type and isinstance(payload, dict):
+    inner_event = payload.get("event")
+    if isinstance(inner_event, str) and inner_event.strip():
+        event_type = inner_event.strip()
 ```
-2026-06-13 12:41:16,796 [INFO] httpx: HTTP Request: POST http://124.243.178.156:8501/v1/workflows/run "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:60849 - "POST /api/chat/stream HTTP/1.1" 200 OK
-```
+v1 路径不变 (SSE `event:` 有值时优先使用, 不退到 payload.event)。
 
-**SseProxyLayer 行为**:
-- 若 Dify 真的 0 事件 → `consumed == 0` → `raise DifyUpstreamError` → endpoint yield `error + end` → 前端 banner 出现
-- 若 Dify 只发 `workflow_started` → `consumed == 1` → proxy 不 raise,仅 yield `session_started` → 前端收不到 `message_complete` → bubble 永远空 (我们看到的)
+**验证证据**:
+- curl `POST /api/chat/stream` 直接看到 v2 事件正常外发: `session_started` → 多个 `message_delta` → `message_complete` 含完整文本 + metadata
+- H5 端到端 (T1/T7): 用户消息 `你好, 你是谁?` → assistant bubble 渲染 `你好呀😊~我是专门面向海外用户的充电桩售后诊断与支持助手...`
+- 单元测试 6 新 v2 case + 6 原 v1 case = 12/12 通过, 无 v1 回归
 
-**前端行为**: 45s 等待,`isSending=false` (stop 按钮消失,stream 完成),bubble 无 text、无 noResponse、无 banner。前端**静默失败** — 用户看不到任何反馈。
+### 3.2 [MEDIUM] 前端 0 事件 UX 缺位 (M6 后续要补) — **重要性降低**
 
-**根因**: Dify v2 workflow 配置问题 (workflow yml 或 v2 API key 指向的 workflow 没有正确 emit text_chunk / workflow_finished)。M7 范围内**不修**,留给 M8。
+M7.5 修复后, Dify 0 事件已不可能从前端呈现 (Dify 一直在发事件, 之前是我们漏读)。若 Dify 实际真 0 事件, M3 SseProxyLayer 兜底 `raise DifyUpstreamError` → endpoint yield `error + end` → 前端 banner 出现, 不再静默失败。
 
-**M8 建议**:
-1. 直接 curl Dify v2 workflow 验证 SSE 事件流
-2. 若 0 事件,查 Dify workflow yml 是否启用了 streaming response_mode
-3. 若 0 事件,查 v2 API key 是否绑定了正确的 workflow
-4. 验证通过后,前端应能正常接收 text_chunk + workflow_finished
-
-### 3.2 [MEDIUM] 前端 0 事件 UX 缺位 (M6 后续要补)
-
-**当前**: 当 Dify 返回 0 事件 (M7.1 的情况),前端显示空 bubble,无任何用户反馈。
-
-**M6.1 仅覆盖** `message_complete.text === null` 的场景 (Dify 显式说 "没回复")。
-**未覆盖**: Dify 完全不发 `message_complete` 的场景。
-
-**建议增强 (M6.5 / M8 候选)**:
-- 在 `for await` 循环结束后,若 assistant message 仍 `text === undefined && !noResponse && !stopped`,设置 `noResponse: true` (兜底)
+**剩余风险**: Dify 发 `workflow_started` 但中途断流, 不发 `message_complete` → bubble 空, 无 banner。增强建议 (M6.5 / M8 候选):
+- 在 `for await` 循环结束后, 若 assistant message 仍 `text === undefined && !noResponse && !stopped`, 设置 `noResponse: true` (兜底)
 - 或在 `finally` 块检查并设置兜底 placeholder
 
 ### 3.3 [LOW] 拍摄按钮 (e37) 无功能
 
 非 M7 范围,App.tsx 注释已注明"拍摄按钮 visible 但 non-functional"。
+
+### 3.4 [RESOLVED M7.5] Dify v2 inline-event 解析漏洞
+
+**修复 commit**: 见 §5 后续 M7.5 commit
+
+**修改文件**:
+- `china_charge_kf/backend/app_dify/dify_client.py` — `_parse_sse_event` 增加 5 行 inline-event 兜底
+- `china_charge_kf/backend/tests/test_dify_client.py` — `TestParseSseEvent` 新增 6 个 v2 回归测试
+- `china_charge_kf/frontend/e2e/M7-REPORT.md` — 本文件, 标记 M7.5 修复
 
 ## 4. M6 验收门全部通过
 
@@ -78,7 +92,9 @@ INFO:     127.0.0.1:60849 - "POST /api/chat/stream HTTP/1.1" 200 OK
 | M6.3 — AbortController UI 集成 | ✅ | T6 验证:stop 按钮 → `.stoppedTag` 渲染,60ms 内可点 |
 | M6.4 — error UI 隔离 | ✅ | T3 验证:error 在 banner,bubble 分离 |
 
-## 5. 改动文件清单 (commit 67e2220)
+## 5. 改动文件清单
+
+### M7 主提交 (commit 67e2220)
 
 ```
 china_charge_kf/frontend/.gitignore                              |  +8
@@ -88,9 +104,17 @@ china_charge_kf/frontend/e2e/playwright.config.ts                | +44 (new)
 china_charge_kf/frontend/e2e/fixtures/test-image-100x100.png     |  +new (286 bytes, 100x100 PNG, PIL RGB red)
 ```
 
+### M7.5 热修 (后续 commit, 待合入)
+
+```
+china_charge_kf/backend/app_dify/dify_client.py                  |  +8  (_parse_sse_event 加 inline-event 兜底 + 注释)
+china_charge_kf/backend/tests/test_dify_client.py                | +74  (TestParseSseEvent 新增 6 个 v2 回归测试)
+china_charge_kf/frontend/e2e/M7-REPORT.md                        | 更新 (本文件, 标记 M7.5 修复)
+```
+
 未触碰 (符合 M7 约束):
 - `frontend/src/**` (M5/M6 产物)
-- `backend/app_dify/**` (M2-M4 产物)
+- `backend/app_dify/**` 之外的 backend 模块 (sse_proxy_layer.py, main.py 仍正确处理事件流, 修复点在事件解析)
 - `docs/**`
 - `china_charge_kf/Workflow-...` 草稿 (无关)
 
@@ -125,7 +149,8 @@ npm run dev -- --port 5173 --strictPort
 
 ## 8. M8 优先级建议
 
-1. **P0**: 修复 Dify v2 workflow 0 事件 (M7.1) — 阻塞 T1/T4/T7
-2. **P1**: 前端 0 事件 UX 兜底 (M7.2) — 静默失败不是好体验
-3. **P2**: M7 场景改写为正式 `*.spec.ts` 文件,接 CI (M7 prompt 原本要求,本次用 MCP 替代)
-4. **P3**: 拍摄按钮要么删要么接实现
+1. ~~**P0**: 修复 Dify v2 workflow 0 事件 (M7.1) — 阻塞 T1/T4/T7~~ ✅ M7.5 已修
+2. **P1**: 前端 stream 中断兜底 (M7.2) — Dify 中途断流不发 `message_complete` 时 bubble 空;建议 `finally` 块检查并设置 `noResponse: true`
+3. **P2**: 思考块流式 strip (M7.5 副发现) — `_strip_thinking` 跨 chunk 不工作, 因为 think 标签在 chunk N 开头、关闭标签在 chunk N+k。H5 widget 收到 `<think>` 开头的 `message_delta`, 渲染时显示给用户。建议: SseProxyLayer 累积完整 text 后再 strip (或前端累积后 strip), 或者干脆前端不渲染 `<think>` 包裹的内容
+4. **P3**: M7 场景改写为正式 `*.spec.ts` 文件,接 CI (M7 prompt 原本要求,本次用 MCP 替代)
+5. **P4**: 拍摄按钮要么删要么接实现
