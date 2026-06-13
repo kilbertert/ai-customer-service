@@ -30,10 +30,12 @@
 - 不修改 M2 `DifyClient`（PR8/9/10 已锁定契约）
 - 不再 strip `<think>` 块（M2 已在 text_chunk 阶段完成 §6.10）
 - 透传 `DifyClient.run_workflow_stream` 的 `inputs` / `end_user`
+
+M8.5 — `_sse_event` / `_truncate_error_message` 私有 helpers 已提取到
+`app_dify.sse_bytes` 公共模块（DRY 修复，与 `main.py` 共享）。
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, AsyncIterator
 
@@ -45,46 +47,18 @@ from app_dify.dify_client import (
     DifyUpstreamError,
     extract_output_text,
 )
+from app_dify.sse_bytes import sse_bytes, truncate_error
 
 logger = logging.getLogger(__name__)
 
 
 # ============== Constants ==============
 
-# H3：错误消息最大长度（M2 默认 500；SseProxyLayer 加强到 200 避免长 Dify 错误体
-# 透传到 H5 widget 触发 OOM / 渲染卡顿）
-_MAX_ERROR_MESSAGE = 200
-
 # M3 错误码（与 PR8 §6.5 错误码映射对齐）
 _ERROR_CODE_AUTH = "DIFY_AUTH"
 _ERROR_CODE_BAD_REQUEST = "DIFY_BAD_REQUEST"
 _ERROR_CODE_UPSTREAM = "DIFY_UPSTREAM"
 _ERROR_CODE_UNKNOWN = "DIFY_UNKNOWN"
-
-
-# ============== Helpers ==============
-
-def _sse_event(event: str, data: dict[str, Any]) -> bytes:
-    """生成单个 SSE 事件字节（`event: <name>\\ndata: <json>\\n\\n`）。
-
-    - ensure_ascii=False 保留中文字符（H5 客户端按 UTF-8 解析）
-    - 末尾双重换行是 SSE 规范要求（事件分隔符）
-    """
-    return (
-        f"event: {event}\n"
-        f"data: {json.dumps(data, ensure_ascii=False)}\n"
-        "\n"
-    ).encode("utf-8")
-
-
-def _truncate_error_message(message: str, max_len: int = _MAX_ERROR_MESSAGE) -> str:
-    """截断错误消息到 ≤ max_len 字符。超长时尾部追加 `...`。
-
-    边界：len == max_len → 不加省略号；len == max_len+1 → 加省略号（结果 = max_len + 3）。
-    """
-    if len(message) <= max_len:
-        return message
-    return message[:max_len] + "..."
 
 
 # ============== Proxy ==============
@@ -166,7 +140,7 @@ class SseProxyLayer:
         data = event.get("data") or {}
 
         if event_type == "workflow_started":
-            return _sse_event("session_started", {
+            return sse_bytes("session_started", {
                 # workflow_run_id 是 v2 唯一稳定标识（id 字段在 v1/v2 都有，
                 # 但 workflow_run_id 更具语义）
                 "session_id": (
@@ -180,7 +154,7 @@ class SseProxyLayer:
 
         if event_type == "text_chunk":
             text = data.get("text")
-            return _sse_event("message_delta", {
+            return sse_bytes("message_delta", {
                 "text": text if isinstance(text, str) else "",
             })
 
@@ -191,7 +165,7 @@ class SseProxyLayer:
                 return None
             # 走 PR9 U1-U10 extract_output_text（fallback 键 + think strip）
             text = extract_output_text(data, "output")
-            return _sse_event("message_complete", {
+            return sse_bytes("message_complete", {
                 "text": text,
                 "total_tokens": data.get("total_tokens"),
                 "elapsed_time": data.get("elapsed_time"),
@@ -202,12 +176,12 @@ class SseProxyLayer:
 
     def _error_bytes(self, code: str, error: DifyError) -> bytes:
         """生成 error 事件字节（H3 截断到 200 字符）。"""
-        return _sse_event("error", {
+        return sse_bytes("error", {
             "code": code,
-            "message": _truncate_error_message(str(error)),
+            "message": truncate_error(str(error)),
         })
 
     @staticmethod
     def _end_bytes() -> bytes:
         """生成 end 事件字节（终止信号，紧跟 error 之后）。"""
-        return _sse_event("end", {})
+        return sse_bytes("end", {})

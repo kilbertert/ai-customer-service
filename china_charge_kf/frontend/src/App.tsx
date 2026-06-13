@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   streamChat,
+  stripThinkTags,
+  abortStatePatch,
   DifyStreamError,
   type DifyErrorCode,
 } from './services/difyStream'
@@ -524,9 +526,13 @@ function App() {
         controller.abort()
         streamControllerRef.current = null
         if (e instanceof DOMException && e.name === 'AbortError') {
-          // M6.3 — user stopped before upload finished
+          // M8.1-UI — same branching as message-send abort path:
+          // empty bubble → noResponse, partial text → stopped.
+          // (Voice/file upload aborts always happen before any text_chunk,
+          // so this almost always renders noResponse — but use the helper
+          // for consistency and zero-leak guarantee.)
           setMessages((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, stopped: true } : m)),
+            prev.map((m) => (m.id === assistantId ? { ...m, ...abortStatePatch(m.text) } : m)),
           )
           return
         }
@@ -556,11 +562,16 @@ function App() {
           )
         } else if (ev.type === 'message_complete') {
           // M6.1 — null → "(no response)" placeholder; '' or text → use backend value
+          // M8.2 — defense-in-depth: strip <think>...</think> blocks that may
+          // slip through when straddling chunk boundaries or arriving via
+          // non-`output` fallback keys (backend extract_output_text covers
+          // workflow_finished.data.output only).
+          const completeText = ev.text === null ? null : stripThinkTags(ev.text)
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== assistantId) return m
-              if (ev.text === null && !m.text) return { ...m, text: '', noResponse: true }
-              return { ...m, text: ev.text ?? m.text ?? '', noResponse: false }
+              if (completeText === null && !m.text) return { ...m, text: '', noResponse: true }
+              return { ...m, text: completeText ?? m.text ?? '', noResponse: false }
             }),
           )
           setStreamError(null) // M6.4 — successful complete clears stale error
@@ -574,9 +585,12 @@ function App() {
       }
     } catch (e) {
       // M6.3 — distinguish abort from real errors
+      // M8.1 — for aborts, branch on whether any text arrived:
+      //   - empty bubble → noResponse (user got nothing, "(no response)" placeholder)
+      //   - partial text → stopped (user got something, "(stopped)" suffix tag)
       if (e instanceof DOMException && e.name === 'AbortError') {
         setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, stopped: true } : m)),
+          prev.map((m) => (m.id === assistantId ? { ...m, ...abortStatePatch(m.text) } : m)),
         )
         return
       }
@@ -843,15 +857,6 @@ function App() {
               </svg>
             </div>
             <span className="panelText">{t.photo}</span>
-          </button>
-          <button type="button" className="panelItem" onClick={() => setIsMorePanelOpen(false)}>
-            <div className="panelIconBg">
-              <svg viewBox="0 0 24 24" width="28" height="28" stroke="#111" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                <circle cx="12" cy="13" r="4"></circle>
-              </svg>
-            </div>
-            <span className="panelText">拍摄</span>
           </button>
         </div>
       </div>

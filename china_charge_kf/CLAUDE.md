@@ -80,4 +80,3 @@ Browser (H5)
 - Audio is recorded as WebM/MP4 via `MediaRecorder`, converted to WAV before upload because Coze prefers WAV format
 - The backend's `_dig_first_text` function handles Coze's non-uniform response format by recursively searching keys like `output`, `answer`, `result`, `text`, `message`, `content`
 - The frontend defaults `apiBase` to a production URL (`https://zcf.h5.qumall.qushiyun.com`); override with `VITE_API_BASE` for local development
-- The "拍摄" (camera) button in `App.tsx` is visible but non-functional — it calls no API and sets nothing; image input comes from the file `<input capture="environment">` triggered by the "拍照/图片" panel button

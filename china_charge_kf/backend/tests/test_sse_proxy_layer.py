@@ -12,7 +12,8 @@
 无需 respx/SSE 字节反解——M2 已经覆盖了 SSE 解析的解析正确性。
 M3 的职责是事件翻译与错误归一化，不是再解析一次 SSE。
 
-RED 阶段：本文件先写完，pytest 应全部失败（sse_proxy_layer.py 尚未实现）。
+M8.5 — `_sse_event` / `_truncate_error_message` 私有 helper 测试已迁移到
+`tests/test_sse_bytes.py`（helper 现属 `app_dify.sse_bytes` 公共模块）。
 """
 from __future__ import annotations
 
@@ -28,11 +29,7 @@ from app_dify.dify_client import (
     DifyError,
     DifyUpstreamError,
 )
-from app_dify.sse_proxy_layer import (
-    SseProxyLayer,
-    _sse_event,
-    _truncate_error_message,
-)
+from app_dify.sse_proxy_layer import SseProxyLayer
 
 
 # ============== Fixtures / 替身 ==============
@@ -98,59 +95,6 @@ async def _collect_bytes(agen) -> list[bytes]:
 def make_event(event_type: str, data: dict[str, Any]) -> dict[str, Any]:
     """构造 `DifyClient.run_workflow_stream` 产出的事件 dict。"""
     return {"event": event_type, "data": data}
-
-
-# ============== _sse_event helper ==============
-
-class TestSseEventHelper:
-    """直接覆盖 _sse_event 字节格式契约。"""
-
-    def test_format_event_line(self):
-        raw = _sse_event("content", {"text": "hi"})
-        assert raw.startswith(b"event: content\n")
-
-    def test_format_data_line_is_json(self):
-        raw = _sse_event("content", {"text": "hi"})
-        text = raw.decode("utf-8")
-        m = re.search(r"^data: (.+)$", text, re.MULTILINE)
-        assert m is not None
-        assert json.loads(m.group(1)) == {"text": "hi"}
-
-    def test_format_ends_with_blank_line(self):
-        """SSE 规范：每个 event 必须以空行结束（双重 \\n）。"""
-        raw = _sse_event("x", {})
-        assert raw.endswith(b"\n\n")
-
-    def test_unicode_chinese_not_escaped(self):
-        """ensure_ascii=False 保证中文字符不被 \\u 转义（H5 客户端按 UTF-8 读取）。"""
-        raw = _sse_event("content", {"text": "充电桩"})
-        assert "充电桩".encode("utf-8") in raw
-        assert b"\\u5145" not in raw  # 不会被转义
-
-
-# ============== _truncate_error_message helper ==============
-
-class TestTruncateErrorMessage:
-    """H3：错误消息截断到 ≤ 200 字符（H3 加强到 200，不是 M2 的 500）。"""
-
-    def test_short_message_unchanged(self):
-        assert _truncate_error_message("simple") == "simple"
-
-    def test_exact_200_unchanged(self):
-        msg = "x" * 200
-        assert _truncate_error_message(msg) == msg
-
-    def test_201_truncated_with_ellipsis(self):
-        msg = "x" * 250
-        result = _truncate_error_message(msg)
-        assert result.startswith("x" * 200)
-        assert result.endswith("...")
-
-    def test_500_truncated_to_203(self):
-        """500 字符 → 200 + "..." = 203 字符。"""
-        msg = "y" * 500
-        result = _truncate_error_message(msg)
-        assert len(result) == 203
 
 
 # ============== 4 类事件映射 ==============

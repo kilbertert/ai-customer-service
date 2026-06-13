@@ -260,3 +260,53 @@ function isAbortError(e: unknown): boolean {
     e.name === 'AbortError'
   )
 }
+
+// ============== M8.2 — defense-in-depth <think> strip ==============
+
+/**
+ * Strip `<think>...</think>` blocks (lazy / multi-line / case-insensitive).
+ *
+ * Why duplicated with backend `extract_output_text` (PR9 U7): backend strips
+ * thinking on workflow_finished.data.output extraction. This frontend pass is
+ * defense-in-depth for two paths backend cannot cover:
+ *   1) accumulated message_delta text (backend strips per-chunk only inside
+ *      Dify's text_chunk emitter — partial `<think>` straddling chunks slips through)
+ *   2) message_complete.text values produced by non-`output` fallback keys not
+ *      yet routed through extract_output_text (M8.2 surface area)
+ *
+ * Lazy `[\s\S]*?` matches across newlines without grabbing past the first `</think>`.
+ * `gi` flag — strip all occurrences, tolerate `<Think>` / `<THINK>`.
+ */
+const THINK_TAG_RE = /<think>[\s\S]*?<\/think>/gi
+
+export function stripThinkTags(text: string): string {
+  if (!text) return text
+  return text.replace(THINK_TAG_RE, '')
+}
+
+// ============== M8.1 — abort state decision ==============
+
+export interface AbortStatePatch {
+  stopped: boolean
+  noResponse: boolean
+}
+
+/**
+ * Decide how to render an assistant message that was aborted mid-stream.
+ *
+ * Two distinct UX states (M6.1 + M6.3 semantics, unified here):
+ *   - `noResponse: true` — user clicked stop BEFORE any text_chunk arrived
+ *     (assistant bubble is empty → render as "(no response)" placeholder,
+ *     consistent with M6.1 backend-None handling)
+ *   - `stopped: true`    — user clicked stop AFTER partial text arrived
+ *     (assistant bubble has content → render with "(stopped)" suffix tag,
+ *     existing M6.3 behavior)
+ *
+ * Caller spreads the returned patch onto the ChatMessage. Both fields are
+ * always set (not undefined) so a previous `stopped` state from another
+ * abort cannot leak through.
+ */
+export function abortStatePatch(currentText: string | null | undefined): AbortStatePatch {
+  if (!currentText) return { stopped: false, noResponse: true }
+  return { stopped: true, noResponse: false }
+}
