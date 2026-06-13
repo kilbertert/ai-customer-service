@@ -283,3 +283,30 @@ export function stripThinkTags(text: string): string {
   if (!text) return text
   return text.replace(THINK_TAG_RE, '')
 }
+
+// ============== M8.1 — abort state decision ==============
+
+export interface AbortStatePatch {
+  stopped: boolean
+  noResponse: boolean
+}
+
+/**
+ * Decide how to render an assistant message that was aborted mid-stream.
+ *
+ * Two distinct UX states (M6.1 + M6.3 semantics, unified here):
+ *   - `noResponse: true` — user clicked stop BEFORE any text_chunk arrived
+ *     (assistant bubble is empty → render as "(no response)" placeholder,
+ *     consistent with M6.1 backend-None handling)
+ *   - `stopped: true`    — user clicked stop AFTER partial text arrived
+ *     (assistant bubble has content → render with "(stopped)" suffix tag,
+ *     existing M6.3 behavior)
+ *
+ * Caller spreads the returned patch onto the ChatMessage. Both fields are
+ * always set (not undefined) so a previous `stopped` state from another
+ * abort cannot leak through.
+ */
+export function abortStatePatch(currentText: string | null | undefined): AbortStatePatch {
+  if (!currentText) return { stopped: false, noResponse: true }
+  return { stopped: true, noResponse: false }
+}

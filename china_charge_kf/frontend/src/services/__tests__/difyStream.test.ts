@@ -17,10 +17,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 import {
   DifyStreamError,
+  abortStatePatch,
   parseEvent,
   parseFields,
   streamChat,
   stripThinkTags,
+  type AbortStatePatch,
   type DifyStreamEvent,
 } from '../difyStream'
 
@@ -388,5 +390,42 @@ describe('stripThinkTags', () => {
   it('tolerates uppercase/mixed-case <THINK> / <Think> (i flag)', () => {
     expect(stripThinkTags('a<THINK>X</THINK>b')).toBe('ab')
     expect(stripThinkTags('a<Think>X</Think>b')).toBe('ab')
+  })
+})
+
+// ============== M8.1 — abortStatePatch helper ==============
+
+describe('abortStatePatch', () => {
+  it('returns noResponse=true for empty string (no text_chunk arrived)', () => {
+    const patch: AbortStatePatch = abortStatePatch('')
+    expect(patch).toEqual({ stopped: false, noResponse: true })
+  })
+
+  it('returns noResponse=true for null (bubble never populated)', () => {
+    const patch: AbortStatePatch = abortStatePatch(null)
+    expect(patch).toEqual({ stopped: false, noResponse: true })
+  })
+
+  it('returns noResponse=true for undefined (defensive, missing field)', () => {
+    const patch: AbortStatePatch = abortStatePatch(undefined)
+    expect(patch).toEqual({ stopped: false, noResponse: true })
+  })
+
+  it('returns stopped=true for partial text (mid-stream abort)', () => {
+    const patch: AbortStatePatch = abortStatePatch('partial reply 你好')
+    expect(patch).toEqual({ stopped: true, noResponse: false })
+  })
+
+  it('always sets BOTH fields (no leak from prior stopped state)', () => {
+    // Regression: ensure noResponse path explicitly clears stopped,
+    // so spreading the patch onto a message that had stopped:true from
+    // a previous abort attempt resets it to false.
+    const patch = abortStatePatch('')
+    expect(patch.stopped).toBe(false)
+    expect(patch.noResponse).toBe(true)
+
+    const patch2 = abortStatePatch('x')
+    expect(patch2.stopped).toBe(true)
+    expect(patch2.noResponse).toBe(false)
   })
 })

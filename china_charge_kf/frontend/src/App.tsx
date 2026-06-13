@@ -3,6 +3,7 @@ import './App.css'
 import {
   streamChat,
   stripThinkTags,
+  abortStatePatch,
   DifyStreamError,
   type DifyErrorCode,
 } from './services/difyStream'
@@ -580,9 +581,12 @@ function App() {
       }
     } catch (e) {
       // M6.3 — distinguish abort from real errors
+      // M8.1 — for aborts, branch on whether any text arrived:
+      //   - empty bubble → noResponse (user got nothing, "(no response)" placeholder)
+      //   - partial text → stopped (user got something, "(stopped)" suffix tag)
       if (e instanceof DOMException && e.name === 'AbortError') {
         setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, stopped: true } : m)),
+          prev.map((m) => (m.id === assistantId ? { ...m, ...abortStatePatch(m.text) } : m)),
         )
         return
       }
