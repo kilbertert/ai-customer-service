@@ -102,6 +102,25 @@ describe('parseEvent', () => {
       .toEqual({ type: 'message_complete', text: 'done', total_tokens: 42, elapsed_time: 1.5 })
   })
 
+  // M6.1 — null is preserved (distinct from empty string), so UI can show
+  // "no reply" vs "empty reply" differently.
+  it('preserves text: null on message_complete (M6.1 contract)', () => {
+    expect(parseEvent('event: message_complete\ndata: {"text":null,"total_tokens":0,"elapsed_time":0.1}'))
+      .toEqual({ type: 'message_complete', text: null, total_tokens: 0, elapsed_time: 0.1 })
+  })
+
+  it('preserves empty-string text on message_complete (distinct from null)', () => {
+    expect(parseEvent('event: message_complete\ndata: {"text":"","total_tokens":0,"elapsed_time":0.1}'))
+      .toEqual({ type: 'message_complete', text: '', total_tokens: 0, elapsed_time: 0.1 })
+  })
+
+  it('coerces missing text field on message_complete to empty string', () => {
+    // Per M6.1 contract: only JSON `null` maps to null. Missing field falls back
+    // to '' — backend omitting the field is indistinguishable from "empty reply".
+    expect(parseEvent('event: message_complete\ndata: {"total_tokens":0,"elapsed_time":0.1}'))
+      .toEqual({ type: 'message_complete', text: '', total_tokens: 0, elapsed_time: 0.1 })
+  })
+
   it('parses end marker', () => {
     expect(parseEvent('event: end\ndata: {}')).toEqual({ type: 'end' })
   })
