@@ -189,3 +189,5 @@ ssl/
 *.cer
 
 .claude/
+/dify/
+.playwright-mcp/
