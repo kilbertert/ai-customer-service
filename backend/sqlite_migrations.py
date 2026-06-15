@@ -407,6 +407,10 @@ def run_sqlite_migrations(database_url: str) -> None:
                             f"✓ Backfilled workspace_id for {cursor.rowcount} agent(s) with NULL workspace_id"
                         )
 
+        # ── M10 G2: Tenant ↔ Workspace 1:1 ──────────────────────────────────
+        if _table_exists(cursor, "tenants"):
+            _migrate_workspace_tenant_1to1(cursor)
+
         conn.commit()
 
     except Exception:
@@ -651,3 +655,139 @@ def _backfill_agents(cursor: sqlite3.Cursor):
             "WHERE restricted_reply IS NULL OR restricted_reply = ''",
             (restricted_reply_default,),
         )
+
+
+# ---- M10 G2: Tenant ↔ Workspace 1:1 -----------------------------------------
+
+
+def _migrate_workspace_tenant_1to1(cursor: sqlite3.Cursor) -> None:
+    """M10 G2 — Tenant ↔ Workspace 1:1 constraint + KnowledgeBase.workspace_id.
+
+    Idempotent. Safe to run multiple times. See:
+      china_charge_kf/M10-PROMPT.md §3.3
+      docs/dify-integration-plan.md §4 (M10 changelog)
+
+    Steps:
+      1. Add nullable workspace_id to tenants and knowledge_bases.
+      2. Backfill tenants.workspace_id from slug (slug LIKE 'agent-%' → agent).
+      3. Dedupe tenants per workspace (keep MIN(id), reassign KBs, delete rest).
+      4. Resolve orphan tenants (workspace_id still NULL) → canonical workspace.
+      5. Backfill knowledge_bases.workspace_id from their tenant.
+      6. Create UNIQUE INDEX ix_tenants_workspace_id (1:1 enforcement at DB).
+      7. Create INDEX ix_knowledge_bases_workspace_id.
+
+    NOT NULL constraint is enforced at the model layer (SQLAlchemy
+    ``nullable=False``); SQLite ``ALTER COLUMN NOT NULL`` would require a full
+    table rebuild, which we skip to keep this migration cheap. New writes go
+    through the ORM and are checked there.
+    """
+    if not (
+        _table_exists(cursor, "tenants")
+        and _table_exists(cursor, "workspaces")
+    ):
+        return
+
+    # Step 1: add columns (idempotent via PRAGMA table_info check).
+    _ensure_columns(
+        cursor,
+        "tenants",
+        [("workspace_id", "INTEGER REFERENCES workspaces(id) ON DELETE CASCADE")],
+    )
+    _ensure_columns(
+        cursor,
+        "knowledge_bases",
+        [("workspace_id", "INTEGER REFERENCES workspaces(id) ON DELETE CASCADE")],
+    )
+
+    # Step 2: backfill tenants.workspace_id from slug.
+    # Slug pattern: f"agent-{agent_id[:8]}" where agent_id = "agt_<12 hex>".
+    # substr(slug, 7) is the 8-char prefix of agent_id; LIKE-match agents.id.
+    if _table_exists(cursor, "agents"):
+        cursor.execute(
+            """
+            UPDATE tenants
+            SET workspace_id = (
+                SELECT workspace_id FROM agents
+                WHERE agents.id LIKE substr(tenants.slug, 7) || '%'
+                LIMIT 1
+            )
+            WHERE workspace_id IS NULL AND slug LIKE 'agent-%'
+            """
+        )
+
+    # Step 3: dedupe tenants per workspace. Keep oldest (MIN(id)), reassign
+    # KnowledgeBase.tenant_id to the kept tenant, delete the rest.
+    cursor.execute(
+        """
+        CREATE TEMP TABLE IF NOT EXISTS _m10_kept_tenants AS
+        SELECT workspace_id, MIN(id) AS kept_id, COUNT(*) AS dup_count
+        FROM tenants
+        WHERE workspace_id IS NOT NULL
+        GROUP BY workspace_id
+        HAVING COUNT(*) > 1
+        """
+    )
+    cursor.execute(
+        """
+        UPDATE knowledge_bases
+        SET tenant_id = (
+            SELECT k.kept_id FROM _m10_kept_tenants k
+            WHERE k.workspace_id = knowledge_bases.workspace_id
+        )
+        WHERE tenant_id IN (
+            SELECT t.id FROM tenants t
+            JOIN _m10_kept_tenants k ON t.workspace_id = k.workspace_id
+            WHERE t.id != k.kept_id
+        )
+        """
+    )
+    cursor.execute(
+        """
+        DELETE FROM tenants
+        WHERE id IN (
+            SELECT t.id FROM tenants t
+            JOIN _m10_kept_tenants k ON t.workspace_id = k.workspace_id
+            WHERE t.id != k.kept_id
+        )
+        """
+    )
+    cursor.execute("DROP TABLE IF EXISTS _m10_kept_tenants")
+
+    # Step 4: resolve orphan tenants (workspace_id still NULL).
+    # Match the admin_users pattern: pick MIN(id) as canonical.
+    cursor.execute("SELECT id FROM workspaces ORDER BY id LIMIT 1")
+    canonical = cursor.fetchone()
+    if canonical:
+        canonical_ws_id = canonical[0]
+        cursor.execute(
+            "UPDATE tenants SET workspace_id = ? WHERE workspace_id IS NULL",
+            (canonical_ws_id,),
+        )
+
+    # Step 5: backfill knowledge_bases.workspace_id from their (now-resolved)
+    # tenant. Handle orphan KBs (tenant_id NULL or unresolved) afterwards.
+    cursor.execute(
+        """
+        UPDATE knowledge_bases
+        SET workspace_id = (
+            SELECT workspace_id FROM tenants
+            WHERE tenants.id = knowledge_bases.tenant_id
+        )
+        WHERE workspace_id IS NULL AND tenant_id IS NOT NULL
+        """
+    )
+    if canonical:
+        cursor.execute(
+            "UPDATE knowledge_bases SET workspace_id = ? WHERE workspace_id IS NULL",
+            (canonical_ws_id,),
+        )
+
+    # Step 6 + 7: create indexes (idempotent via IF NOT EXISTS).
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_tenants_workspace_id "
+        "ON tenants(workspace_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_bases_workspace_id "
+        "ON knowledge_bases(workspace_id)"
+    )

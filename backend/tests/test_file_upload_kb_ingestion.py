@@ -19,7 +19,7 @@ class TestFileUploadKbIngestion:
         """Test that file upload creates KbDocument records with pending status."""
         # Arrange: Get existing test agent via default_agent_id
         # The setup_test_db fixture creates a default agent
-        from models import Agent, Tenant, KbDocument
+        from models import Agent, Tenant, KbDocument, Workspace
         from services.kb_service import KbService
 
         async with database.AsyncSessionLocal() as session:
@@ -30,7 +30,15 @@ class TestFileUploadKbIngestion:
             assert agent is not None, "Test agent should exist"
 
             # Create tenant for KB
-            tenant = Tenant(name="test_tenant", slug="test_tenant")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant",
+                slug="test_tenant",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             tenant_id = str(tenant.id)
@@ -72,7 +80,7 @@ class TestFileUploadKbIngestion:
     async def test_upload_files_enforces_file_count_limit(self, client):
         """Test that file upload enforces max 5 files limit."""
         # Arrange
-        from models import Agent, Tenant
+        from models import Agent, Tenant, Workspace
         from services.kb_service import KbService
 
         async with database.AsyncSessionLocal() as session:
@@ -82,7 +90,15 @@ class TestFileUploadKbIngestion:
             agent = result.scalar_one_or_none()
             assert agent is not None
 
-            tenant = Tenant(name="test_tenant3", slug="test_tenant3")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant3",
+                slug="test_tenant3",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             tenant_id = str(tenant.id)
@@ -116,7 +132,7 @@ class TestFileUploadKbIngestion:
     async def test_upload_files_rejects_unsupported_extensions(self, client):
         """Test that only supported extensions are accepted."""
         # Arrange
-        from models import Agent, Tenant
+        from models import Agent, Tenant, Workspace
         from services.kb_service import KbService
 
         async with database.AsyncSessionLocal() as session:
@@ -126,7 +142,15 @@ class TestFileUploadKbIngestion:
             agent = result.scalar_one_or_none()
             assert agent is not None
 
-            tenant = Tenant(name="test_tenant4", slug="test_tenant4")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant4",
+                slug="test_tenant4",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             tenant_id = str(tenant.id)
@@ -205,7 +229,7 @@ class TestFileUploadKbIngestion:
     async def test_upload_files_returns_kb_document_status(self, client):
         """Test that response includes KbDocument status."""
         # Arrange
-        from models import Agent, Tenant
+        from models import Agent, Tenant, Workspace
         from services.kb_service import KbService
 
         async with database.AsyncSessionLocal() as session:
@@ -215,7 +239,15 @@ class TestFileUploadKbIngestion:
             agent = result.scalar_one_or_none()
             assert agent is not None
 
-            tenant = Tenant(name="test_tenant6", slug="test_tenant6")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant6",
+                slug="test_tenant6",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             tenant_id = str(tenant.id)
@@ -260,7 +292,7 @@ class TestFileUploadKbIngestion:
         """
         import uuid
         from io import BytesIO
-        from models import Agent, Tenant, KbDocument
+        from models import Agent, Tenant, KbDocument, Workspace
         from services.kb_service import KbService
 
         async with database.AsyncSessionLocal() as session:
@@ -270,7 +302,15 @@ class TestFileUploadKbIngestion:
             agent = result.scalar_one_or_none()
             assert agent is not None
 
-            tenant = Tenant(name="test_tenant_error", slug="test_tenant_error")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant_error",
+                slug="test_tenant_error",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             tenant_id = str(tenant.id)
@@ -343,7 +383,7 @@ class TestFileUploadKbIngestion:
         """
         import uuid
         from io import BytesIO
-        from models import Agent, Tenant, KbDocument
+        from models import Agent, Tenant, KbDocument, Workspace
         from services.kb_service import KbService
 
         async with database.AsyncSessionLocal() as session:
@@ -353,7 +393,15 @@ class TestFileUploadKbIngestion:
             agent = result.scalar_one_or_none()
             assert agent is not None
 
-            tenant = Tenant(name="test_tenant_state", slug="test_tenant_state")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant_state",
+                slug="test_tenant_state",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             tenant_id = str(tenant.id)

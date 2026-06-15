@@ -59,6 +59,17 @@ class Workspace(Base):
     )
     quotas = relationship("WorkspaceQuota", back_populates="workspace", uselist=False)
     admin_users = relationship("AdminUser", back_populates="workspace")
+    # M10 G2: Tenant ↔ Workspace 1:1 (Tenant.plan 字段保留为 M11+ 占位,本 M10 不实现)
+    tenant = relationship(
+        "Tenant",
+        back_populates="workspace",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    # M10 G2: 直接 FK 到 workspace 的 KB(避免 JOIN tenants)
+    knowledge_bases = relationship(
+        "KnowledgeBase", back_populates="workspace", cascade="all, delete-orphan"
+    )
 
 
 class Agent(Base):
@@ -532,28 +543,54 @@ class AdminUser(Base):
 
 
 class Tenant(Base):
-    """租户表（多租户顶层）"""
+    """Workspace 的计费/订阅 profile 壳 (M10 G2 起)。
+
+    1:1 绑定到一个 Workspace (Tenant.workspace_id UNIQUE)。`plan` /
+    `billing_email` 字段保留为 M11+ 计费功能占位,本 M10 不实现,代码库内 0 引用。
+    """
 
     __tablename__ = "tenants"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String(100), nullable=False)
+    # M10 G2: 1:1 Workspace (per M10-PROMPT.md §3.2 option B)
+    workspace_id = Column(
+        Integer,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    name = Column(String(100), nullable=False)  # 冗余 workspace.name 便于查询
     slug = Column(String(50), unique=True, nullable=False, index=True)
-    plan = Column(String(20), nullable=False, default="free")
+    plan = Column(String(20), nullable=False, default="free")  # M11+ 占位
+    billing_email = Column(String(255), nullable=True)  # M11+ 占位
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    workspace = relationship("Workspace", back_populates="tenant")
     knowledge_bases = relationship(
         "KnowledgeBase", back_populates="tenant", cascade="all, delete-orphan"
     )
 
 
 class KnowledgeBase(Base):
-    """知识库表（每 agent 独立 KB）"""
+    """Workspace 级知识库 (M10 G2 后,不再 per-agent)。
+
+    tenant_id 字段保留(向后兼容旧数据),但语义改为"workspace 的计费壳";
+    新增 workspace_id 直接 FK 避免穿透 tenant。
+    """
 
     __tablename__ = "knowledge_bases"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    # M10 G2: 直接 FK 到 workspace,避免总是要 JOIN tenants 表
+    workspace_id = Column(
+        Integer,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name = Column(String(100), nullable=False)
     embedding_model = Column(String(100), nullable=False, default="BAAI/bge-m3")
     embedding_base_url = Column(String(500), nullable=True)
@@ -580,6 +617,7 @@ class KnowledgeBase(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant", back_populates="knowledge_bases")
+    workspace = relationship("Workspace", back_populates="knowledge_bases")
     documents = relationship(
         "KbDocument", back_populates="knowledge_base", cascade="all, delete-orphan"
     )

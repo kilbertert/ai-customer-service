@@ -188,14 +188,32 @@ async def require_tenant_access(
     current_user: AdminUser = Depends(require_admin_or_super_admin),
     db: AsyncSession = Depends(get_db),
 ) -> str:
-    """Lightweight tenant check (exists + user context). Extend with membership later."""
+    """Tenant 访问鉴权 (M10 G2 fix)。
+
+    Bug: 原实现 current_user 被注入但从未被使用 → 任何已登录 admin
+    可访问任意 Tenant (跨租户越权)。
+
+    修复 (M10-PROMPT.md §3.4):
+        - super_admin: 跨租户访问
+        - 普通 admin: 只能访问自己 workspace 下的 Tenant
+    """
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id required")
     from models import Tenant
 
     result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
-    if not result.scalar_one_or_none():
+    tenant = result.scalar_one_or_none()
+    if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if current_user.role == "super_admin":
+        return tenant_id
+
+    if current_user.workspace_id is None or tenant.workspace_id != current_user.workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant does not belong to your workspace",
+        )
     return tenant_id
 
 

@@ -32,6 +32,17 @@ class KbService:
             raise ValueError("tenant_id is required for all KB operations")
 
         async with await self._get_session() as session:
+            # M10 G2: derive workspace_id from Tenant if not explicitly passed.
+            # Tenant 现在 1:1 绑定到 Workspace,workspace_id 跟 tenant 走,避免脱节。
+            if "workspace_id" not in kwargs:
+                tenant_row = await session.execute(
+                    select(Tenant).where(Tenant.id == tenant_id)
+                )
+                tenant_obj = tenant_row.scalar_one_or_none()
+                if tenant_obj is None:
+                    raise ValueError(f"Tenant {tenant_id} not found")
+                kwargs["workspace_id"] = tenant_obj.workspace_id
+
             kb = KnowledgeBase(
                 tenant_id=tenant_id,
                 name=name,
@@ -384,16 +395,24 @@ class KbService:
                 # KB record not found - clear stale binding and fall through to create new
                 agent.kb_id = None
 
-        # Create new tenant for this agent's workspace
+        # M10 G2: Tenant 1:1 Workspace. Per-workspace find-or-create.
+        # Bug fix: 旧逻辑按 agent_id 切片做 slug,导致同 workspace 多 agent 重复 Tenant。
         from uuid import uuid4
 
-        tenant = Tenant(
-            id=str(uuid4()),
-            name=f"Tenant for Agent {agent.name}",
-            slug=f"agent-{agent_id[:8]}",
+        workspace_id = agent.workspace_id
+        existing_tenant_result = await session.execute(
+            select(Tenant).where(Tenant.workspace_id == workspace_id)
         )
-        session.add(tenant)
-        await session.flush()
+        tenant = existing_tenant_result.scalar_one_or_none()
+        if tenant is None:
+            tenant = Tenant(
+                id=str(uuid4()),
+                workspace_id=workspace_id,
+                name=f"Workspace {workspace_id} Tenant",
+                slug=f"ws-{workspace_id}",
+            )
+            session.add(tenant)
+            await session.flush()
 
         # Get agent's embedding config
         embedding_model = getattr(agent, "embedding_model", None) or "BAAI/bge-m3"
@@ -409,9 +428,10 @@ class KbService:
             elif embedding_provider == "siliconflow":
                 embedding_base_url = "https://api.siliconflow.cn/v1"
 
-        # Create new KB
+        # Create new KB (M10 G2: workspace_id 直接 FK,避免 JOIN tenants)
         kb = KnowledgeBase(
             tenant_id=tenant.id,
+            workspace_id=tenant.workspace_id,
             name=f"KB for Agent {agent.name}",
             embedding_model=embedding_model,
             embedding_base_url=embedding_base_url,

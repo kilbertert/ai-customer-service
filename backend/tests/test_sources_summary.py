@@ -27,7 +27,11 @@ async def agent_with_kb_docs(setup_test_db):
             session.add(WorkspaceQuota(workspace_id=workspace.id))
 
         # Create tenant
-        tenant = Tenant(name="Test Tenant", slug="test-tenant")
+        tenant = Tenant(
+            name="Test Tenant",
+            slug="test-tenant",
+            workspace_id=workspace.id,
+        )
         session.add(tenant)
         await session.flush()
 
@@ -47,6 +51,7 @@ async def agent_with_kb_docs(setup_test_db):
         # Create knowledge base for agent
         kb = KnowledgeBase(
             tenant_id=tenant.id,
+            workspace_id=workspace.id,
             name=f"KB for {agent.id}",
             embedding_model="BAAI/bge-m3",
             qdrant_collection=f"kb_{agent.id}",
@@ -197,9 +202,18 @@ async def test_sources_summary_filters_by_tenant_id(client, agent_with_kb_docs):
     kb_id = agent_with_kb_docs["kb_id"]
     original_tenant_id = agent_with_kb_docs["tenant_id"]
 
-    # Create a different tenant
+    # M10 G2: Tenant 1:1 Workspace, 跨租户测试需要第二个 workspace
     async with database.AsyncSessionLocal() as session:
-        other_tenant = Tenant(name="Other Tenant", slug="other-tenant")
+        ws2 = Workspace(
+            name="Other WS Summary", owner_email="other-sources@example.com"
+        )
+        session.add(ws2)
+        await session.flush()
+        other_tenant = Tenant(
+            name="Other Tenant",
+            slug="other-tenant",
+            workspace_id=ws2.id,
+        )
         session.add(other_tenant)
         await session.flush()
 
