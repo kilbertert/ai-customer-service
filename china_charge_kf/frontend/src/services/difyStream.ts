@@ -1,6 +1,11 @@
 /**
  * M5 — Dify SSE stream consumer for H5 widget.
  *
+ * > **FROZEN-DEPRECATED 2026-06-15** — M10 G4 PR3 物理合并完成。本文件已在
+ * > basjoo 仓 `frontend-nextjs/src/services/difyStream.ts` 落地 (commit
+ * > `fc7bc4a`)。新改动请在 basjoo 仓提交,本目录保留只读。
+ * > 详见 `china_charge_kf/M10-FROZEN-README.md`。
+ *
  * Why hand-rolled: native EventSource only does GET; /api/chat/stream is POST + JSON body.
  * Why no deps: half-packet / sticky buffer / abort are ~30 lines — pulling in eventsource-parser
  * or rxjs for one POST endpoint is overkill (CLAUDE.md "no new heavy deps").
