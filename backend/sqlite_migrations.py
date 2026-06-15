@@ -815,13 +815,14 @@ def _migrate_workspace_tenant_1to1(cursor: sqlite3.Cursor) -> None:
 
 
 def _migrate_workspaces_dify_fields(cursor: sqlite3.Cursor) -> None:
-    """M10 G3 — Workspace 表加 4 个 Dify 集成字段。
+    """M10 G3 + M10+2 — Workspace 表加 Dify 集成字段。
 
     Idempotent. Safe to run multiple times. See:
       china_charge_kf/M10-PROMPT.md §4
       docs/dify-integration-plan.md §4 (M10 changelog)
+      docs/handoffs/M10PLUS-agent-dify-integration.md §7.A (M10+2 admin creds)
 
-    字段语义:
+    M10 G3 字段语义:
     - dify_api_base: Dify API endpoint (NULL = 走系统默认;非空 = 本 workspace 覆盖)
     - dify_api_key: Fernet 加密存储(M10 §4.3 锁)
       - 加密入口:core.encryption.encrypt_api_key()
@@ -833,6 +834,12 @@ def _migrate_workspaces_dify_fields(cursor: sqlite3.Cursor) -> None:
     Plan A / Plan B 自动判定(runtime):
     - dify_api_key IS NULL → Plan B (共享 Dify workspace + 全局 API key)
     - dify_api_key IS NOT NULL → Plan A (本 workspace 独占 Dify workspace)
+
+    M10+2 D4.1 字段语义:
+    - dify_admin_email: Dify admin 登录邮箱 (明文)
+    - dify_admin_password_ref: Fernet 加密的 Dify admin 密码
+      - 仅在 dify_enabled=True 时必填,否则 endpoint fail-fast 400
+      - 解密入口:core.encryption.decrypt_api_key() (在 DifyAdminClient.from_workspace)
     """
     _ensure_columns(
         cursor,
@@ -842,5 +849,8 @@ def _migrate_workspaces_dify_fields(cursor: sqlite3.Cursor) -> None:
             ("dify_api_key", "TEXT"),
             ("dify_workspace_id", "VARCHAR(64)"),
             ("dify_enabled", "BOOLEAN DEFAULT 0"),
+            # M10+2 D4.1 — Dify admin 凭据 (workspace service account)
+            ("dify_admin_email", "VARCHAR(255)"),
+            ("dify_admin_password_ref", "TEXT"),
         ],
     )

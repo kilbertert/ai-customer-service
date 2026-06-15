@@ -13,6 +13,7 @@ from fastapi import (
     BackgroundTasks,
 )
 from fastapi.responses import StreamingResponse
+import httpx
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, delete, or_
@@ -103,6 +104,12 @@ from services.llm_service import get_llm_service
 from services.auth_service import AuthService
 from services.kb_retrieval_service import KbRetrievalService
 from services.kb_service import KbService
+from services.dify.admin_client import DifyAdminClient
+from services.dify.exceptions import (
+    DifyAuthError,
+    DifyConfigError,
+    DifyUpstreamError,
+)
 from middleware import get_request_client_ip
 from api.v1.sse_utils import sse_event
 from config import settings
@@ -2046,6 +2053,17 @@ async def create_agent(
             detail=f"Workspace agent limit reached (max {quota.max_agents})",
         )
 
+    # M10+2: 加载 workspace 用于 Dify 集成层判断 (dify_enabled + admin 凭据)
+    workspace_result = await db.execute(
+        select(Workspace).where(Workspace.id == current_user.workspace_id)
+    )
+    workspace = workspace_result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workspace not found",
+        )
+
     persona_type = request.persona_type or "general"
     system_prompt = request.system_prompt
     if not system_prompt and persona_type in PERSONA_PRESETS:
@@ -2080,6 +2098,67 @@ async def create_agent(
     # Note: we no longer create AgentMember for super_admin automatically
     # Super admins use workspace-based auth (agent.workspace_id == admin.workspace_id)
     # Agent membership must be explicitly assigned via /agents/{id}/members endpoint
+
+    # M10+2 D1+D2+D9(c): create_agent endpoint 接入 DifyAdminClient (kickoff §7.B)
+    # 流程: flush 取 agent.id (不 commit) → 4 步 Dify 集成 → 终态 commit / 异常 rollback
+    await db.flush()
+
+    if workspace.dify_enabled:
+        # M10+2 fail-fast (kickoff §6.2): dify_enabled=True 但 admin 凭据缺失 → 400
+        # 不调 Dify, 避免给 Dify 留 orphan App
+        if not workspace.dify_admin_email or not workspace.dify_admin_password_ref:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "workspace.dify_enabled=True but Dify admin credentials are missing. "
+                    "Set workspace.dify_admin_email + workspace.dify_admin_password_ref."
+                ),
+            )
+
+        try:
+            dify = DifyAdminClient.from_workspace(workspace)
+            # Step 1+2: 2-step create app + workflow (D3 课程修正)
+            #   step 2 失败时 DifyAdminClient 内部已调 DELETE /apps/{id} 回滚 (D2 守门)
+            create_result = await dify.create_app_and_workflow(
+                name=request.name,
+                description=request.description or "",
+                mode="workflow",
+            )
+            agent.dify_app_id = create_result["app_id"]
+            agent.dify_workflow_id = create_result["workflow_id"]
+
+            # Step 3+4: enable API + create per-agent runtime API key (D8)
+            #   失败 → raise, 外层 catch 触发 rollback
+            api_key = await dify.enable_api_and_create_key(create_result["app_id"])
+            agent.dify_api_key = encrypt_api_key(api_key)
+
+            # Step 5: publish_workflow (D9(c) 容错: 400/422 → False 不抛)
+            #   失败 = 业务可恢复, 不回滚, status='publish_failed' 写入 DB
+            publish_ok = await dify.publish_workflow(create_result["app_id"])
+            if publish_ok:
+                agent.dify_publish_status = "published"
+            else:
+                agent.dify_publish_status = "publish_failed"
+                agent.dify_publish_error = (
+                    "Dify workflow publish failed (likely empty graph validation). "
+                    "Admin can retry publish in Dify UI."
+                )
+        except (DifyConfigError, DifyAuthError, DifyUpstreamError, httpx.HTTPError) as e:
+            # M10+2 D2: 系统故障回滚 (5xx / 网络错 / auth 错)
+            # 整笔事务回滚, DB 无 agent 行, DifyAdminClient 内部 _delete_app 已清理 Dify App
+            logger.error(
+                "Dify workflow creation failed for agent %s: %s: %s",
+                agent.id,
+                type(e).__name__,
+                e,
+            )
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Dify workflow creation failed: {e}",
+            )
+
     await db.commit()
     await db.refresh(agent)
     return await build_agent_config_with_stats(agent, db)

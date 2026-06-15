@@ -27,6 +27,7 @@ from config import settings
 from core.encryption import decrypt_api_key
 from models import Agent, Workspace
 from services.dify.dify_client import DifyClient
+from services.dify.exceptions import DifyConfigError
 from services.dify.sse_proxy_layer import SseProxyLayer
 
 logger = logging.getLogger(__name__)
@@ -191,12 +192,31 @@ class DifyProvider:
     # ------------------------------------------------------------------
 
     def _resolve_api_key(self) -> str:
-        """按 workspace → settings 优先级解析 Dify API key。
+        """M10+2 D8: 3 级 fallback 解析 Dify API key (agent → workspace → settings)。
 
-        workspace.dify_api_key 是 Fernet 加密存储 (PR2-3 引入), 需要解密;
-        settings.dify_api_key 是明文环境变量 (Plan B 全局默认)。
+        优先级 (kickoff §7.C):
+            1. ``agent.dify_api_key`` (M10+1 新增, per-agent Fernet 加密)
+            2. ``workspace.dify_api_key`` (M10 legacy, workspace Fernet 加密, Plan B 默认)
+            3. ``settings.dify_api_key`` (明文环境变量, Plan B 全局默认)
+
+        失败兜底:
+            - 任一层非空但解密失败 → log warning + 降级到下一层
+            - 三层都拿不到 → raise DifyConfigError("No Dify API key resolved")
+              (M10+1 新增异常, 让 caller 显式知道配置缺失, 比返回空字符串更安全)
         """
-        if self.workspace.dify_api_key:
+        # 1) per-agent (M10+1 D8) — 最优先, 满足 per-tenant API key 隔离
+        agent_key = getattr(self.agent, "dify_api_key", None)
+        if agent_key:
+            decrypted = decrypt_api_key(agent_key)
+            if decrypted:
+                return decrypted
+            logger.warning(
+                "DifyProvider: agent.dify_api_key present but failed to decrypt; "
+                "falling back to workspace.dify_api_key"
+            )
+
+        # 2) workspace-level (M10 legacy) — Plan B workspace 默认 key
+        if self.workspace and self.workspace.dify_api_key:
             decrypted = decrypt_api_key(self.workspace.dify_api_key)
             if decrypted:
                 return decrypted
@@ -204,7 +224,17 @@ class DifyProvider:
                 "DifyProvider: workspace.dify_api_key present but failed to decrypt; "
                 "falling back to settings.dify_api_key"
             )
-        return settings.dify_api_key or ""
+
+        # 3) settings-level (Plan B 全局兜底)
+        if settings.dify_api_key:
+            return settings.dify_api_key
+
+        # 三层都拿不到 → 显式 fail-fast
+        raise DifyConfigError(
+            "No Dify API key resolved. Set agent.dify_api_key (per-agent), "
+            "workspace.dify_api_key (Plan B workspace), "
+            "or settings.dify_api_key (Plan B global env)."
+        )
 
     def _build_dify_client(self, *, end_user: str) -> DifyClient:
         """构造 ``DifyClient`` (frozen dataclass)。

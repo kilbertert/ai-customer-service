@@ -304,8 +304,13 @@ class TestDifyProviderInit:
         assert "plan b" in str(exc_info.value).lower()
 
     def test_raises_when_no_api_key(self, monkeypatch):
-        """workspace 缺 key + provider settings 缺 key → ValueError."""
+        """workspace 缺 key + provider settings 缺 key → DifyConfigError (M10+2 D8 升级).
+
+        M10+2 §7.C: 3 级 fallback 全空时, 用 ``DifyConfigError`` (在 ``services.dify.exceptions``
+        声明) 而非 ``ValueError``, 让 caller 显式知道是"配置缺失"而非其他 ValueError.
+        """
         from services.dify import provider
+        from services.dify.exceptions import DifyConfigError
 
         monkeypatch.setattr(
             provider,
@@ -315,7 +320,7 @@ class TestDifyProviderInit:
         workspace = _fake_workspace(dify_api_base=None, dify_api_key=None)
         agent = _fake_agent()
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(DifyConfigError) as exc_info:
             DifyProvider(workspace=workspace, agent=agent, visitor_id="vis_abc")
 
         assert "api key" in str(exc_info.value).lower()

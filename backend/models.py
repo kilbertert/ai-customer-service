@@ -61,6 +61,14 @@ class Workspace(Base):
     dify_workspace_id = Column(String(64), nullable=True)  # Dify 端 workspace UUID
     dify_enabled = Column(Boolean, nullable=False, default=False)  # 总开关
 
+    # M10+2 D4.1: Dify admin 凭据 (workspace service account)
+    # dify_enabled=True 时必须 2 个都非空,否则 endpoint fail-fast 400
+    # dify_admin_email: 明文 (Dify admin 用 email 登录, 非密钥无需加密)
+    # dify_admin_password_ref: Fernet 加密 (解密切 core.encryption.decrypt_api_key)
+    # DifyAdminClient.from_workspace 用这 2 个字段构造生产侧管理 API 客户端
+    dify_admin_email = Column(String(255), nullable=True)
+    dify_admin_password_ref = Column(Text, nullable=True)  # Fernet 加密
+
     # 关系
     agents = relationship(
         "Agent", back_populates="workspace", cascade="all, delete-orphan"
