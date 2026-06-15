@@ -48,6 +48,7 @@ from services.dify.dify_client import (
     extract_output_text,
 )
 from services.dify.sse_bytes import sse_bytes, truncate_error
+from services.dify.strip_think import create_think_stripper
 
 logger = logging.getLogger(__name__)
 
@@ -87,32 +88,55 @@ class SseProxyLayer:
         - `DifyUpstreamError`    → error{DIFY_UPSTREAM} + end
         - 其它 `DifyError`       → error{DIFY_UNKNOWN} + end
         - 非 `DifyError` 异常     → 直接 propagate（不吞）
+
+        PR4b (G5 #7)：text_chunk 走 ``_StreamingThinkStripper``，跨 chunk 累积
+        状态由 proxy 持有；流结束 (Dify 流走完 / 错误返回前) 必须 ``stripper.flush()``
+        以处理 Dify 没发的尾段 (unclosed <think> 视为模型异常丢弃)。
         """
         consumed = 0
+        stripper = create_think_stripper()
         try:
             async for event in self._client.run_workflow_stream(
                 inputs=inputs, end_user=end_user
             ):
                 consumed += 1
-                mapped = self._map_event(event)
+                mapped = self._map_event(event, stripper=stripper)
                 if mapped is not None:
                     yield mapped
         except DifyAuthError as e:
+            tail = stripper.flush()
+            if tail:
+                yield sse_bytes("message_delta", {"text": tail})
             yield self._error_bytes(_ERROR_CODE_AUTH, e)
             yield self._end_bytes()
             return
         except DifyBadRequestError as e:
+            tail = stripper.flush()
+            if tail:
+                yield sse_bytes("message_delta", {"text": tail})
             yield self._error_bytes(_ERROR_CODE_BAD_REQUEST, e)
             yield self._end_bytes()
             return
         except DifyUpstreamError as e:
+            tail = stripper.flush()
+            if tail:
+                yield sse_bytes("message_delta", {"text": tail})
             yield self._error_bytes(_ERROR_CODE_UPSTREAM, e)
             yield self._end_bytes()
             return
         except DifyError as e:
+            tail = stripper.flush()
+            if tail:
+                yield sse_bytes("message_delta", {"text": tail})
             yield self._error_bytes(_ERROR_CODE_UNKNOWN, e)
             yield self._end_bytes()
             return
+
+        # Stream 正常结束 (Dify 流已走完)。flush stripper 把 trailing `<` 兜底
+        # 释放出, 防止 message_complete.text 出现 end-of-stream look-ahead 残留。
+        tail = stripper.flush()
+        if tail:
+            yield sse_bytes("message_delta", {"text": tail})
 
         # Review #1 防御：Dify 200 OK 但 SSE 流 0 事件（连接立即关闭 / 空 body）
         # 若不 raise，H5 widget 永远收不到 session_started / error / end 任何事件
@@ -124,7 +148,12 @@ class SseProxyLayer:
     # 内部：事件 → SSE 字节
     # ------------------------------------------------------------------
 
-    def _map_event(self, event: dict[str, Any]) -> bytes | None:
+    def _map_event(
+        self,
+        event: dict[str, Any],
+        *,
+        stripper: "_StreamingThinkStripper | None" = None,
+    ) -> bytes | None:
         """将 Dify 事件映射为 SSE 字节。返回 None 表示该事件不外发。
 
         Dify 事件形态（来自 DifyClient.run_workflow_stream）：
@@ -133,8 +162,11 @@ class SseProxyLayer:
             {"event": "workflow_finished", "data": {"status": "succeeded", "outputs": …}}
             …
 
-        M2 已对 `text_chunk.data.text` 做 thinking strip（§6.10），
-        本层不再 strip，直接透传。
+        PR4b (G5 #7)：``text_chunk`` 跨 chunk strip —— ``_StreamingThinkStripper``
+        在 proxy() 入口实例化, 本函数 ``feed()`` 累积的字符级 delta, 返回的
+        安全前缀被 yield 为 ``message_delta`` 字节。workflow_finished 的
+        ``outputs.output`` 仍走 ``extract_output_text`` 路径 (M2 PR9 已 strip
+        final-state, defense-in-depth)。
         """
         event_type = event.get("event")
         data = event.get("data") or {}
@@ -154,16 +186,29 @@ class SseProxyLayer:
 
         if event_type == "text_chunk":
             text = data.get("text")
-            return sse_bytes("message_delta", {
-                "text": text if isinstance(text, str) else "",
-            })
+            raw = text if isinstance(text, str) else ""
+            # PR4b: 跨 chunk strip.  stream-level 累积消除 character-level
+            # tokens (Dify v2 ~1-3 chars/chunk) 带来的 per-chunk regex no-op 问题
+            # (见 real-dify-per-chunk-strip-noop memory)。
+            if stripper is None:
+                # 防御性：调用方忘了传 stripper 时降级到原始 per-chunk 透传
+                return sse_bytes("message_delta", {"text": raw})
+            safe_text = stripper.feed(raw)
+            if not safe_text:
+                # hold all: 不外发空 message_delta 事件
+                return None
+            return sse_bytes("message_delta", {"text": safe_text})
 
         if event_type == "workflow_finished":
             status = data.get("status")
             # 只 succeeded → message_complete；其它状态由 M2 raise DifyUpstreamError
             if status != "succeeded":
                 return None
-            # 走 PR9 U1-U10 extract_output_text（fallback 键 + think strip）
+            # 走 PR9 U1-U10 extract_output_text（fallback 键 + think strip）。
+            # M2 已在 text_chunk 阶段 strip think 块 (defense-in-depth):
+            # - message_delta: 走 PR4b _StreamingThinkStripper (本层)
+            # - message_complete: 走 M2 extract_output_text → _strip_thinking
+            # 双重保险, 即便 stripper 被禁用 / 失败, final-state 仍干净
             text = extract_output_text(data, "output")
             return sse_bytes("message_complete", {
                 "text": text,

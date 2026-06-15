@@ -47,6 +47,14 @@ export interface ChatStreamParams {
   language?: string
   end_user?: string
   apiBase?: string
+  // M10 PR4b — allow non-H5 callers (e.g. admin dashboard's api.ts streamChat
+  // delegating from `/api/v1/chat/stream`) to override the hardcoded path.
+  // Default stays `/api/chat/stream` for H5 widget compatibility.
+  endpoint?: string
+  // M10 PR4b — extra headers (e.g. `Authorization: Bearer <token>`) merged into
+  // the fetch call. H5 widget leaves this unset (cookie/session auth); admin
+  // dashboard passes the bearer token here.
+  headers?: Record<string, string>
   signal?: AbortSignal
 }
 
@@ -82,6 +90,8 @@ export async function* streamChat(
     language,
     end_user,
     apiBase = '',
+    endpoint = ENDPOINT,
+    headers,
     signal,
   } = params
 
@@ -91,9 +101,13 @@ export async function* streamChat(
 
   let response: Response
   try {
-    response = await fetch(`${apiBase}${ENDPOINT}`, {
+    response = await fetch(`${apiBase}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(headers ?? {}),
+      },
       body: JSON.stringify(body),
       signal,
     })

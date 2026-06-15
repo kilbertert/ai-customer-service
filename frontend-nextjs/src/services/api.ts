@@ -2,6 +2,12 @@
  * API Service for v1 Endpoints
  */
 import { API_BASE_URL } from "../lib/env";
+// M10 PR4b — Dify stream path delegation. api.ts streamChat routes to the
+// existing difyStream.ts consumer (think-stripping, sticky buffer, error
+// normalization) when the caller opts in via `options.useDifyStream`. LLM
+// path is unchanged.
+import { streamChat as difyStreamChat } from "./difyStream";
+import type { DifyStreamEvent } from "./difyStream";
 
 export interface ChatRequest {
 	agent_id: string;
@@ -380,8 +386,20 @@ class APIService {
 		},
 		options?: {
 			signal?: AbortSignal;
+			// M10 PR4b — when true, delegate to difyStream.ts consumer instead of
+			// the inline LLM parser. The Dify path uses the SAME backend endpoint
+			// (`/api/v1/chat/stream`); basjoo PR4a wired the chat_stream endpoint
+			// to dual-source Dify/LLM. difyStream.ts handles think-stripping,
+			// sticky SSE buffer, and Dify error normalization.
+			useDifyStream?: boolean;
 		},
 	): Promise<void> {
+		// M10 PR4b — Dify path delegation. LLM path below is unchanged.
+		if (options?.useDifyStream) {
+			await this.streamChatDify(request, callbacks, options.signal);
+			return;
+		}
+
 		const chatRequest = {
 			...request,
 			locale: request.locale || this.getLocale(),
@@ -539,6 +557,85 @@ class APIService {
 			}
 		} finally {
 			reader.releaseLock();
+		}
+	}
+
+	// M10 PR4b — Dify stream path delegation. Thin wrapper around difyStream.ts
+	// consumer that translates DifyStreamEvent → LLM-callback contract
+	// (onContent / onDone / onError). session_id from session_started is
+	// captured in closure so message_complete's onDone can populate StreamDoneMeta.
+	// No `onSources` / `onThinking` / `onThinkingDone` firings — Dify path
+	// doesn't emit those event types.
+	private async streamChatDify(
+		request: ChatRequest,
+		callbacks: {
+			onContent: (chunk: string) => void;
+			onDone: (meta: StreamDoneMeta) => void;
+			onError: (error: string) => void;
+		},
+		signal?: AbortSignal,
+	): Promise<void> {
+		const token = localStorage.getItem("token");
+		const headers: Record<string, string> = {};
+		if (token) {
+			headers.Authorization = `Bearer ${token}`;
+		}
+		const streamBaseUrl = this.getStreamBaseUrl();
+		let sessionId: string | undefined;
+
+		try {
+			for await (const event of difyStreamChat({
+				text: request.message,
+				file_ids: [],
+				language: request.locale,
+				end_user: undefined,
+				apiBase: streamBaseUrl,
+				endpoint: "/api/v1/chat/stream",
+				headers,
+				signal,
+			})) {
+				switch (event.type) {
+					case "session_started":
+						sessionId = event.session_id || undefined;
+						break;
+					case "message_delta":
+						if (event.text) {
+							callbacks.onContent(event.text);
+						}
+						break;
+					case "message_complete":
+						callbacks.onDone({
+							message_id: null,
+							session_id: sessionId,
+							usage:
+								event.total_tokens > 0
+									? {
+											prompt_tokens: 0,
+											completion_tokens: event.total_tokens,
+											total_tokens: event.total_tokens,
+										}
+									: null,
+							taken_over: false,
+						});
+						break;
+					case "error":
+						callbacks.onError(event.message || "Dify stream error");
+						break;
+					case "end":
+						// Stream terminator — no callback needed.
+						break;
+				}
+			}
+		} catch (e) {
+			// difyStreamChat throws DifyStreamError on network/HTTP/parse failures
+			// (per difyStream.test.ts contract). Surface its message; never
+			// re-throw — caller (Playground) expects Promise<void> with errors
+			// delivered via onError.
+			if (e instanceof Error) {
+				callbacks.onError(e.message);
+			} else {
+				callbacks.onError("Dify stream failed");
+			}
 		}
 	}
 
