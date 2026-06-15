@@ -411,6 +411,11 @@ def run_sqlite_migrations(database_url: str) -> None:
         if _table_exists(cursor, "tenants"):
             _migrate_workspace_tenant_1to1(cursor)
 
+        # ── M10 G3: Dify 集成层 4+4 字段 ────────────────────────────────────
+        if _table_exists(cursor, "workspaces"):
+            _migrate_workspaces_dify_fields(cursor)
+        # agents 4 字段:加在 _migrate_agents 列表尾部,见下方
+
         conn.commit()
 
     except Exception:
@@ -493,6 +498,11 @@ def _migrate_agents(cursor: sqlite3.Cursor):
             "TEXT DEFAULT '您好！我是Basjoo助手，有什么可以帮您的吗？'",
         ),
         ("history_days", "INTEGER DEFAULT 30"),
+        # M10 G3: Dify 集成层 per-agent 字段
+        ("dify_workflow_id", "VARCHAR(64)"),
+        ("dify_user_prefix", "VARCHAR(20) DEFAULT 'agent-'"),
+        ("dify_inputs_schema", "TEXT"),
+        ("dify_end_user_strategy", "VARCHAR(20) DEFAULT 'dual_layer'"),
     ]
 
     # Handle the old column-name migration before we report existing columns
@@ -790,4 +800,39 @@ def _migrate_workspace_tenant_1to1(cursor: sqlite3.Cursor) -> None:
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS ix_knowledge_bases_workspace_id "
         "ON knowledge_bases(workspace_id)"
+    )
+
+
+# ---- M10 G3: Dify 集成层 4+4 字段 ------------------------------------------
+
+
+def _migrate_workspaces_dify_fields(cursor: sqlite3.Cursor) -> None:
+    """M10 G3 — Workspace 表加 4 个 Dify 集成字段。
+
+    Idempotent. Safe to run multiple times. See:
+      china_charge_kf/M10-PROMPT.md §4
+      docs/dify-integration-plan.md §4 (M10 changelog)
+
+    字段语义:
+    - dify_api_base: Dify API endpoint (NULL = 走系统默认;非空 = 本 workspace 覆盖)
+    - dify_api_key: Fernet 加密存储(M10 §4.3 锁)
+      - 加密入口:core.encryption.encrypt_api_key()
+      - 解密入口:core.encryption.decrypt_api_key()
+      - 解密失败兜底:返回 None(操作员需检查 ENCRYPTION_KEY 轮转)
+    - dify_workspace_id: Dify 端 workspace UUID
+    - dify_enabled: 总开关(False = 走 OpenAI 直连,True = 走 Dify Workflow)
+
+    Plan A / Plan B 自动判定(runtime):
+    - dify_api_key IS NULL → Plan B (共享 Dify workspace + 全局 API key)
+    - dify_api_key IS NOT NULL → Plan A (本 workspace 独占 Dify workspace)
+    """
+    _ensure_columns(
+        cursor,
+        "workspaces",
+        [
+            ("dify_api_base", "VARCHAR(255)"),
+            ("dify_api_key", "TEXT"),
+            ("dify_workspace_id", "VARCHAR(64)"),
+            ("dify_enabled", "BOOLEAN DEFAULT 0"),
+        ],
     )

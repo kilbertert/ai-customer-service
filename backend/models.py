@@ -53,6 +53,14 @@ class Workspace(Base):
     owner_email = Column(String(255), unique=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # M10 G3: Dify 集成层字段(同时支持 Plan A / Plan B 拓扑)
+    # NULL dify_api_key = Plan B (共享 Dify workspace + 共享 API key)
+    # 非空 dify_api_key = Plan A (本 workspace 独占 Dify workspace)
+    dify_api_base = Column(String(255), nullable=True)
+    dify_api_key = Column(Text, nullable=True)  # Fernet 加密,见 core/encryption.py
+    dify_workspace_id = Column(String(64), nullable=True)  # Dify 端 workspace UUID
+    dify_enabled = Column(Boolean, nullable=False, default=False)  # 总开关
+
     # 关系
     agents = relationship(
         "Agent", back_populates="workspace", cascade="all, delete-orphan"
@@ -219,6 +227,15 @@ class Agent(Base):
     kb_id = Column(
         String(36), ForeignKey("knowledge_bases.id"), nullable=True, index=True
     )
+
+    # M10 G3: Dify 集成层 per-agent 字段
+    dify_workflow_id = Column(String(64), nullable=True)  # 1 agent = 1 workflow
+    # M10 G1: end_user 编码策略 (双层 agent-{aid}-v-{vid}-s-{sid})
+    dify_user_prefix = Column(String(20), nullable=False, default="agent-")
+    dify_inputs_schema = Column(JSON, nullable=True)  # G1 schema 描述(可选)
+    dify_end_user_strategy = Column(
+        String(20), nullable=False, default="dual_layer"
+    )  # dual_layer | legacy
 
     # 关系
     workspace = relationship("Workspace", back_populates="agents")
