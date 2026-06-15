@@ -123,9 +123,9 @@
 
 | 决策点 | 选择 | 备选方案 | 为何选 | 决策日期 | 影响 |
 |---|---|---|---|---|---|
-| Dify workspace 数量 | **1 个**（平台自有） | 每个 B 客户一个 workspace | N 个 workspace 带来运维/计费灾难，且 Dify workspace 是组织单元不是租户单元 | 2026-06-12 | DIFY_WORKSPACE 单一环境变量 |
+| Dify workspace 数量 | **1 个**（平台自有） | 每个 B 客户一个 workspace | v1 假设"workspace 是组织单元不是租户单元"——**已被 2026-06-13 实查 Dify 仓库推翻**。Tenant = Workspace 同一实体;API key tenant-bound (单 key 编码"哪个租户")。**"1 vs N" 是部署拓扑选择,不是 Dify 能力限制**:Dify Cloud $59/workspace/月(成本现实);自托管可 N workspace 共享实例;Plan A 模式 (1 Basjoo tenant = 1 Dify workspace) 在自托管下成本可控。v1 选 1 在 Dify Cloud 假设下仍 valid,但 Plan A 切换条件成熟时须重评(详 §1.2.1 addendum) | 2026-06-12 (v1) / 2026-06-13 (修订) | DIFY_WORKSPACE 单一环境变量;[M9.5 addendum:详 §1.2.1] |
 | Dify workflow 数量 | **1 个** v2 | 多个 workflow 按业务线 | 业务差异通过 inputs 动态注入，1 个 workflow 更易维护 | 2026-06-12 | DIFY_WORKFLOW_ID 单一环境变量 |
-| 多租户隔离层 | **Backend 数据库层** | Dify 内置隔离 | 真正的 SaaS 多租户 + Dify 原生不支持细粒度租户 | 2026-06-12 | 所有表加 workspace_id 列 |
+| 多租户隔离层 | **Backend 数据库层 (DB 字段 + Qdrant 物理 collection)** | Dify 内置隔离 (Tenant=Workspace native) | v1 假设"Dify 原生不支持细粒度租户"——**已被 2026-06-13 实查推翻**。Dify 在每层 enforcement 租户隔离:DB tenant_id 过滤、RBAC 限 current_tenant、API key validation lookup tenant、workflow/app/dataset/KB 全 scope to tenant (详 `memory/fact-dify-multi-tenant-architecture.md`)。**但 v1 选 Backend 强化仍是 valid decision**:① Backend 是 SaaS 计费/合规审计的入口,SQL 可直查"某 workspace 用了多少 tokens",Dify API 反查慢且受限;② v1 部署 Dify Cloud 1 workspace 模式下,Dify 隔离不可用(只有 1 tenant 可言),必须 Backend 自建;③ M8 e2e 已覆盖跨租户拒绝,测试基础设施成熟。Plan A (委派 Dify) 仅在自托管 + N workspace 拓扑下可比,详 §1.2.1 addendum | 2026-06-12 (v1) / 2026-06-13 (修订) | 所有表加 workspace_id 列;Qdrant 多 collection;[M9.5 addendum:详 §1.2.1] |
 | KB 物理隔离 | **Qdrant 多 collection** | Qdrant payload 过滤 | 物理隔离防止逻辑漏洞 + 删除 workspace 时直接 drop collection | 2026-06-12 | tenant_kb_wsid_{hash16} 命名 |
 | KB 检索位置 | **Backend** | Dify workflow 内部 KB | Dify `dataset_ids` 硬编码在 yml，无法 API 动态切换 | 2026-06-12 | Dify workflow 简化（去 KB 节点） |
 | 图片多模态处理 | **Dify vision** | Backend Vision 描述成文本 | Dify vision 端到端理解更准确 + Backend 减少 LLM 调用 | 2026-06-12 | PR13 vision_service.py 在 chat_stream 不再被调用 |
@@ -135,6 +135,89 @@
 | 灰度路由算法 | **session_id MD5 hash % 100** | 随机 / per-request | 粘性：同一 session 全程一致，UX 一致 | 2026-06-12 | DIFY_ROLLOUT_PERCENTAGE + per-agent 强制开关 |
 | 故障降级 | **Dify 失败 → 原 LLM** | 完全失败 | 用户体验优先 + 降级路径可观测 | 2026-06-12 | Circuit Breaker + 健康检查 |
 | 核心入口改造方式 | **新建 /chat/stream-v2** | 改造原 /chat/stream | 旧端点保留 6 个月可回滚 + A/B 对比 | 2026-06-12 | 旧端点不删除 |
+
+---
+
+### 1.2.1 M9.5 Addendum:多租户方案 Plan A vs Plan B（2026-06-13 增）
+
+> **触发事件**:用户 2026-06-13 独立研究 Dify 实际仓库,发现 **Tenant = Workspace 同一实体** + **API key tenant-bound (单 key 已编码"哪个租户")** + **隔离 enforcement 在 DB / RBAC / API key validation / workflow / app / dataset / KB 全层 scope to tenant**。详 `memory/fact-dify-multi-tenant-architecture.md`。
+>
+> **影响判定**:推翻 v1 §1.2 决策日志的 2 条 reasoning (Dify workspace 数量 / 多租户隔离层),但 v1 选 **1 workspace + Backend 强隔离** 在 v1 部署假设 (Dify Cloud) 下仍 valid。本 addendum 重新审视 §5 M3-M7 是否仍需 "Backend 自建 tenant 隔离",并出方案对比 + 推荐。
+
+#### 1.2.1.1 核心问题
+
+- china_charge_kf 后期进入 B2B 多租户场景 (多个企业租户订阅平台)
+- **Backend 是否仍要自建 tenant 隔离层?** 还是 **委派 Dify native 隔离**?
+- 部署拓扑未定:Dify Cloud (按 workspace 收费) vs 自托管 (workspace 数无额外成本)
+- 是否需要"重写 M3-M7 design"?
+
+#### 1.2.1.2 方案对比
+
+| 维度 | **Plan A — 薄封装(委派 Dify)** | **Plan B — 双层 defense-in-depth** ← v1 现状 |
+|------|-------------------------------|---------------------------------------------|
+| **核心思路** | 1 Basjoo tenant = 1 Dify workspace = 1 tenant-bound API key;Backend 只存 per-tenant DIFY_API_KEY + 代理调用;隔离全委派 Dify | 保持现有 M3-M7 design;Backend 自有 workspace_id + Qdrant 物理 collection + DB 字段;Dify 隔离(若 1 workspace 模式则不隔离)作为额外兜底 |
+| **M3 改动** | 重写 DifyProvider → per-tenant DifyClient 工厂(workspace_id → API key lookup) | 保持 v1 (Agent 字段 + DifyProvider + MessagesToDifyInputConverter) |
+| **M6 改动** | MultiLayerKbService 改为 Dify Dataset API(per-workspace dataset_id) | 保持 v1 (Qdrant 多 collection) |
+| **M7 改动** | tenant_kb_endpoints 改为 Dify API (dataset CRUD + 配额走 Dify) | 保持 v1 (Backend 配额表 + 物理 Qdrant drop) |
+| **代码量** | **-30%~50%**(M3 简化 + M6/M7 大半代码可删) | v1 baseline(无减) |
+| **风险** | ① Dify Cloud cost 失控(N × $59/月);② Dify 隔离若失效 Backend 无 fallback;③ Dify API 限流成新单点 | ① Backend 实现 bug 可能越权(已 M8 e2e 覆盖);② 重复造轮子 |
+| **性能** | 委派 Dify = 网络多一跳;Qdrant 检索经 Dify 二次中转(+50-100ms) | Backend Qdrant 直连 < 50ms |
+| **审计** | Backend 不存 tenant 数据 → Dify API 反查(慢 + 受限 + 计费数据缺失) | Backend SQL 直查 workspace 级用量 / 配额 / 计费(毫秒级,字段齐) |
+| **隔离强度** | 强(依赖 Dify native enforcement) | 强(Backend 自身 enforcement,independent of Dify) |
+| **运维复杂度** | 1 Basjoo tenant = 1 Dify workspace 配对,新增租户需 Dify 端操作 | Backend 表 + Qdrant collection 即可,Dify 端无变更 |
+| **Dify Cloud 兼容** | ❌ 不可行(成本 N × $59/月 不接受) | ✅ 1 workspace 默认 |
+| **自托管兼容** | ✅ 1 Dify instance 1 workspace 含 N tenant (Dify native multi-tenant 模式) | ✅ 保持 1 workspace 默认,可后切 N(合规需要时) |
+
+#### 1.2.1.3 部署拓扑 × 方案 矩阵
+
+| 部署拓扑 | Plan A | Plan B |
+|----------|--------|--------|
+| **Dify Cloud** (单账号 N workspace) | ❌ 成本 N × $59/月 不接受 | ✅ **推荐**(1 workspace,BaaS 计费) |
+| **自托管 单实例** | ✅ 可行(共享 PG/Redis,无 per-workspace 成本) | ✅ **推荐**(简单,1 workspace 默认) |
+| **自托管 多实例** | ❌ 复杂度高(N 套 Dify metadata 同步) | ✅ 可行 |
+| **混合 (Cloud B2C + 自托管 B2B)** | ⚠️ 部分可行(仅 B2B 走 Plan A) | ✅ 统一方案 |
+
+#### 1.2.1.4 推荐
+
+**基线推荐 Plan B**(保持 v1 现状,代码不动,M9.5 仅文档同步):
+
+1. **部署拓扑未定** — Dify Cloud 是 v1 早期最可能选项,Plan A 不可行
+2. **Backend 审计是 SaaS 计费/合规的关键** — Plan A 把审计权让给 Dify,商业风险高
+3. **M3-M7 design work 已投入** — Plan A 切换收益(-30% 代码) < 切换成本(重写 + 重测 + 灰度)
+4. **测试基础设施成熟** — M8 e2e 已覆盖跨租户拒绝,Plan B 的"Backend 实现 bug 越权"风险有兜底
+5. **单一 source of truth** — 1 Dify workspace + Backend 强隔离 比 1 tenant 1 workspace 简单,符合 KISS
+
+**触发 Plan A 切换条件**(未来,不在 M9.5 范围):
+
+| 触发条件 | 可能性 | 何时重评 |
+|----------|--------|----------|
+| Dify Cloud 计费模型变化(workspace 数免费 / 降价) | 低 | 持续跟踪 Dify 定价 |
+| 自托管成本被接受 + Basjoo 全面切自托管 | 中 | 部署拓扑确定后 |
+| Dify Dataset API 支持 per-request dataset_id (绕开 yml 硬编码) | 中 | 跟踪 Dify roadmap |
+| Basjoo tenant 数 < 10 + 全自托管(可手配 1 workspace 1 tenant) | 低 | B 客户 < 10 时 |
+| Backend 维护成本 > Plan A 收益(代码量 -30%) | 待观察 | M3-M7 全实施后回看 |
+
+**当前 action (M9.5 范围)**:
+
+- 保持 Plan B 不动,**M9.5 仅文档同步,无代码变更**
+- M3-M7 design 保持 v1(§5 不重写)
+- M8 e2e 跨租户测试仍是必跑门
+- 任何对 M3-M7 design 的"启用 Plan A 模式"提案,需走 RFC(本 addendum 末尾追加 entry)
+
+#### 1.2.1.5 §5 M3-M7 重新审视 (M9.5.2 产出)
+
+逐节审视假设"Backend 必须自建 tenant 隔离"是否仍 valid:
+
+| 里程碑 | v1 design 假设 | M9.5 重评 | 仍 valid 吗 | 备注 |
+|--------|----------------|----------|------------|------|
+| **M3 LLMProvider** | 1 Agent 1 Dify API key (平台共享),Backend 路由 | Plan A 下 per-tenant key;Plan B 下保持 1 key | **Plan B 仍 valid** | Plan A 需重写 Provider 工厂 + Agent schema (workspace → key mapping) |
+| **M4 SSE 代理** | 协议转换,无 tenant 逻辑 | 纯协议层,与隔离无关 | **valid** | 不变 |
+| **M5 chat_stream** | Phase 1 准备 (Origin 白名单 / Quota / Session / KB / PR13) 全是 Backend | Session/KB/Quota 仍 Backend 管,Phase 1 是 audit 入口 | **valid** | Phase 1 设计目的就是 audit,Plan A 也需保留 |
+| **M6 MultiLayerKbService** | Backend Qdrant 多 collection (物理隔离) | Plan A 下应改 Dify Dataset API (native 隔离) | **Plan B 仍 valid** | Plan A 需 M6 全文重写(per-workspace dataset_id API) |
+| **M7 tenant_kb_endpoints** | Backend CRUD + 配额表 + 物理 Qdrant drop | Plan A 下应改 Dify API 调 + Dify 配额 | **Plan B 仍 valid** | Plan A 需 M7 全文重写 + 删 TenantKbQuota 表 |
+| **§1.2 addendum 触发条件** | "1 个 Dify workspace" + "Backend DB 隔离层" | 重写后保留决策、修正 reasoning | **部分修订** | 本节已完成 |
+
+**结论**:M4 / M5 / Plan B 下的 M3 / M6 / M7 假设均 **valid**;**Plan A 切换不需立即做**,M9.5 仅文档同步,代码不动。
 
 ---
 
@@ -2274,6 +2357,9 @@ def upgrade():
 | 2026-06-12 | v1.0 | 初版设计基线，定义 M0-M10 里程碑 | AI |
 | 2026-06-12 | v2.0 | 返工版：修复 27 个问题，新增 5 个章节（§10-14），增加术语表、决策日志、依赖图、统一单测覆盖率至 80%、统一节点 ID 锁、M5 改为新建端点 + 灰度粘性 + 降级、PR13 简化为单 LLM、增加 §6 跨切关注、扩展 §4 数据模型 | AI |
 | 2026-06-12 | v2.0 | 新增 ADR 章节引用、§9 跨会话交接清单细化、§11 数据迁移、§12 安全合规、§13 成本计费、§14 文档交付物 | AI |
+| 2026-06-13 | v2.1 (M9.5 文档同步) | **§1.2 decision log 修订 2 条 reasoning**:(1) "Dify workspace 数量" 推翻"workspace 是组织单元"假设,改为"1 vs N 是部署拓扑选择,不是 Dify 能力限制";(2) "多租户隔离层" 推翻"Dify 原生不支持细粒度租户"假设,改为"Dify native Tenant=Workspace enforcement,Backend 强化仍 valid 因 v1 部署 Dify Cloud 1 workspace"。**新增 §1.2.1 M9.5 Addendum**:Plan A (薄封装委派 Dify) vs Plan B (双层 defense-in-depth ← v1 现状) 对比表 + 部署拓扑矩阵 + 推荐 (基线 Plan B) + 触发 Plan A 切换条件清单 + §5 M3-M7 逐节重评结论。**触发原因**:2026-06-13 用户独立研究 Dify 仓库,发现 Tenant=Workspace 同一实体 + API key tenant-bound + 隔离 enforcement 每层。**新 reasoning 引用**:`memory/fact-dify-multi-tenant-architecture.md`。**当前 action**:仅文档同步,无代码变更,Plan B 保持不动 | AI |
+| 2026-06-15 | v2.5 (M10 PR4b 物理合并) | **PR4b 落地**:`backend/services/dify/strip_think.py` (new, 148 行, _StreamingThinkStripper state machine) + `sse_proxy_layer.py` 注入 stripper (4 个 Dify error 路径 + normal end 都调 `stripper.flush()`) + `backend/tests/test_strip_think.py` 24 cases 全过;`frontend-nextjs/src/services/difyStream.ts` 扩展 `ChatStreamParams.endpoint?` + `headers?`;`frontend-nextjs/src/services/api.ts` 新增 `useDifyStream` flag + 私有方法 `streamChatDify` 委派到 `difyStreamChat`;新 vitest `api.streamChatDify.test.ts` 4 cases (happy / think-strip / 4xx error / no-token headers) 全过。**验收**:PR4b 4 硬门全 PASS(165/165 backend pytest 含 24 strip_think + 180/180 frontend vitest 含 4 streamChatDify + tsc clean + M9 e2e spec 未触动)。**协议层 (SseProxyLayer) 已于 v2.4 标 FROZEN-DEPRECATED,本 PR 是协议层与 frontend M9.1 stripper 的 bridge 落点**(详见 `china_charge_kf/M10-FROZEN-README.md`)| AI |
+| 2026-06-15 | v2.6 (M10 PR4c 真实 Dify 端到端 E2E) | **PR4c 验收**:5 rounds real-Dify E2E in china_charge_kf H5 widget (Option 1, 主) + 1 round basjoo DifyProvider G1 编码 + real Dify round-trip (Option 2, 副, 不需 5 轮);Option 3 widget 跳过(per 用户 "G1 在那无意义")。**硬门 1 (Σ M9-HARD-GATE fires = 0)**: PASS,5/5 rounds 气泡无 `<think>` 残段,console errors 累计 5 条全部为 browser extension 噪声(`message channel closed`)与 M9 无关。**硬门 2 (G1 格式匹配 ≥3/5)**: PASS,5/5 function-level(`agent-agt-001-v-vis-r1-s-sess-r1-001` 等) + 1/1 real-Dify round-trip(`agent-agt-pr4c-v-visitor-pr4c-r1-s-sess-pr4c-001` → Dify 200 OK)。**硬门 5 (basjoo `/api/v1/chat/stream` → DifyProvider → 真 Dify 流式 E2E)**: **未验证** — basjoo 生产 DB `agent.dify_workflow_id` 无 agent 填充(grep 0 rows),沙箱内补跑需 SQL 注入 + 启 backend + 装可能缺包,转本机/CI 补跑(清单见 M10-REPORT §8)。**沙箱限制降级路径**:Docker Hub `python:3.13-slim` build size validation 失败 → 本地 miniconda Python 3.13.5 跑 `uvicorn app_dify.main:app --port 8012`;`npx playwright test` 被 sandbox `cmd.exe` spawn 拦 → 改用 Playwright MCP(本机等价实跑)。**配置变更**:`backend/.env` (basjoo, gitignored) + `china_charge_kf/backend/.env.dify` placeholder v2 key → real v2 key(均不 commit,本地 .env 注入)。**交付物**:`china_charge_kf/M10-REPORT.md` + 本 changelog 条目;证据 `/tmp/china_charge_kf_backend.log` + `/tmp/pr4c_round_results.txt` + `/tmp/curl_r1.txt`(`.playwright-mcp/console-*.log` 引用过期已删)。**总体验收**:**CONDITIONAL PASS** (3.5/4 硬门 + 1 缺口待本机/CI 补跑) | AI |
 
 ---
 
