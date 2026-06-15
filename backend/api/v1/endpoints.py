@@ -1506,6 +1506,23 @@ async def chat_stream(
                 _agent = chat_context["agent"]
                 _restricted_reply = _agent.restricted_reply
 
+                # M10 PR4a: Dify 集成检测 — 加载 workspace,准备 DifyProvider
+                # 仅当 agent.dify_workflow_id 非空时才走 Dify 路径,否则保持原 LLM 路由
+                _dify_workflow_id = (_agent.dify_workflow_id or "").strip()
+                _session_visitor_id = session.visitor_id
+                _workspace_obj = None
+                if _dify_workflow_id:
+                    ws_q = await prep_db.execute(
+                        select(Workspace).where(Workspace.id == workspace_id)
+                    )
+                    _workspace_obj = ws_q.scalar_one_or_none()
+                    if _workspace_obj is None:
+                        logger.warning(
+                            "chat_stream: agent %s has dify_workflow_id but workspace %s not found",
+                            _agent.id,
+                            workspace_id,
+                        )
+
                 logger.info(
                     "chat_stream prepare done agent_id=%s session_id=%s prepare_ms=%.1f",
                     request.agent_id,
@@ -1525,115 +1542,227 @@ async def chat_stream(
                 return
             # prep_db closes here, releasing the connection
 
-        # Phase 2: LLM streaming without DB connection
-        yield sse_event("sources", {"sources": sources})
-
-        reply_parts = []
+        # Phase 2: streaming — LLM or Dify path per agent.dify_workflow_id
+        # M10 §2 / §7 PR4a: Dify 路径透传 SseProxyLayer 字节,G1 end_user 编码在
+        # DifyProvider._build_end_user 内部完成;LLM 路径保持原实现不动。
         stream_start = time.monotonic()
         max_stream_duration = 300.0
-        content_started = False
-        thinking_started = False
-        first_token_logged = False
-        try:
-            stream_create_start = time.monotonic()
-            stream_iter = llm.chat_completion(
-                messages=messages,
-                system_prompt=None,
-                stream=True,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ).__aiter__()
-            logger.info(
-                "chat_stream stream created agent_id=%s session_id=%s stream_create_ms=%.1f",
-                request.agent_id,
-                session_public_id,
-                (time.monotonic() - stream_create_start) * 1000,
-            )
 
-            while True:
-                elapsed = time.monotonic() - stream_start
-                if elapsed > max_stream_duration:
-                    logger.warning("Stream timeout after %.0fs", elapsed)
-                    fallback = get_restricted_reply(
-                        _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
-                    )
-                    yield sse_event("content", {"content": fallback})
-                    yield sse_event(
-                        "done",
-                        {
-                            "message_id": None,
-                            "session_id": session_public_id,
-                            "usage": None,
-                            "taken_over": False,
-                        },
-                    )
-                    return
+        # M10 PR4a: 初始化 DifyProvider (仅当 agent.dify_workflow_id 非空)
+        _dify_provider = None
+        if _dify_workflow_id and _workspace_obj is not None:
+            try:
+                from services.dify.provider import DifyProvider
 
-                try:
-                    chunk = await asyncio.wait_for(
-                        stream_iter.__anext__(), timeout=15.0
-                    )
-                except StopAsyncIteration:
-                    break
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
-                    thinking_started = True
-                    yield sse_event(
-                        "thinking", {"elapsed": int(time.monotonic() - stream_start)}
-                    )
-                    continue
+                _dify_provider = DifyProvider(
+                    workspace=_workspace_obj,
+                    agent=_agent,
+                    visitor_id=_session_visitor_id,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "chat_stream: DifyProvider init failed, falling back to LLM: %s",
+                    exc,
+                )
 
-                reply_parts.append(chunk)
-                if not content_started and chunk.strip():
-                    content_started = True
-                    if not first_token_logged:
-                        first_token_logged = True
-                        logger.info(
-                            "chat_stream first token agent_id=%s session_id=%s first_token_ms=%.1f total_before_first_ms=%.1f",
-                            request.agent_id,
-                            session_public_id,
-                            (time.monotonic() - stream_start) * 1000,
-                            (time.monotonic() - request_start) * 1000,
+        if _dify_provider is not None:
+            # ---- M10 PR4a: Dify 路径 — 透传 SseProxyLayer 字节 ----
+            from services.dify.provider import extract_message_complete_text
+
+            dify_reply: list[str] = []
+            try:
+                stream_iter = _dify_provider.stream_chat(
+                    text=combined_user_text or request.message,
+                    language=request.locale or request.widget_locale,
+                    file_ids=attachment_db_ids,
+                    session_public_id=session_public_id,
+                ).__aiter__()
+                logger.info(
+                    "chat_stream Dify stream created agent_id=%s session_id=%s",
+                    request.agent_id,
+                    session_public_id,
+                )
+
+                while True:
+                    elapsed = time.monotonic() - stream_start
+                    if elapsed > max_stream_duration:
+                        logger.warning("Dify stream timeout after %.0fs", elapsed)
+                        fallback = get_restricted_reply(
+                            _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
                         )
-                    if thinking_started:
-                        yield sse_event("thinking_done", {})
-                yield sse_event("content", {"content": chunk})
-                await asyncio.sleep(0)
-        except Exception:
-            logger.exception("LLM streaming failed")
-            # Graceful fallback: return agent's restricted reply instead of a technical error
-            fallback = get_restricted_reply(
-                _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
-            )
-            yield sse_event("content", {"content": fallback})
-            yield sse_event(
-                "done",
-                {
-                    "message_id": None,
-                    "session_id": session_public_id,
-                    "usage": None,
-                    "taken_over": False,
-                },
-            )
-            return
+                        yield sse_event("content", {"content": fallback})
+                        yield sse_event(
+                            "done",
+                            {
+                                "message_id": None,
+                                "session_id": session_public_id,
+                                "usage": None,
+                                "taken_over": False,
+                            },
+                        )
+                        return
 
-        reply = replace_source_placeholders("".join(reply_parts), sources)
-        if not reply or not reply.strip():
-            logger.warning(
-                "LLM returned empty stream response for session %s", session_public_id
-            )
-            reply = get_restricted_reply(
-                _restricted_reply, "抱歉，我暂时无法回答这个问题，请换个方式提问。"
-            )
-            yield sse_event("content", {"content": reply})
-        real_usage = llm.get_last_usage()
-        if real_usage:
-            logger.info("chat stream usage from provider: %s", real_usage)
+                    try:
+                        chunk_bytes = await asyncio.wait_for(
+                            stream_iter.__anext__(), timeout=15.0
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        yield sse_event(
+                            "thinking",
+                            {"elapsed": int(time.monotonic() - stream_start)},
+                        )
+                        continue
+
+                    # 抓取 message_complete.text 供 Phase 3 持久化
+                    captured = extract_message_complete_text(chunk_bytes)
+                    if captured is not None and not dify_reply:
+                        dify_reply.append(captured)
+                    yield chunk_bytes
+                    await asyncio.sleep(0)
+            except Exception:
+                logger.exception("Dify streaming failed")
+                fallback = get_restricted_reply(
+                    _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
+                )
+                yield sse_event("content", {"content": fallback})
+                yield sse_event(
+                    "done",
+                    {
+                        "message_id": None,
+                        "session_id": session_public_id,
+                        "usage": None,
+                        "taken_over": False,
+                    },
+                )
+                return
+
+            reply = dify_reply[0] if dify_reply else ""
+            if not reply or not reply.strip():
+                logger.warning(
+                    "Dify returned empty stream response for session %s",
+                    session_public_id,
+                )
+                reply = get_restricted_reply(
+                    _restricted_reply,
+                    "抱歉，我暂时无法回答这个问题，请换个方式提问。",
+                )
+                yield sse_event("content", {"content": reply})
+            # Dify 路径不暴露 LLM usage, 退到字符级 fallback (build_chat_usage)
+            usage = build_chat_usage(messages, reply, use_mock_llm)
         else:
-            logger.info(
-                "chat stream usage: provider returned None, using character-length fallback"
-            )
-        usage = real_usage or build_chat_usage(messages, reply, use_mock_llm)
+            # ---- 原 LLM 路径 (M10 不动) ----
+            yield sse_event("sources", {"sources": sources})
+
+            reply_parts = []
+            content_started = False
+            thinking_started = False
+            first_token_logged = False
+            try:
+                stream_create_start = time.monotonic()
+                stream_iter = llm.chat_completion(
+                    messages=messages,
+                    system_prompt=None,
+                    stream=True,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                ).__aiter__()
+                logger.info(
+                    "chat_stream stream created agent_id=%s session_id=%s stream_create_ms=%.1f",
+                    request.agent_id,
+                    session_public_id,
+                    (time.monotonic() - stream_create_start) * 1000,
+                )
+
+                while True:
+                    elapsed = time.monotonic() - stream_start
+                    if elapsed > max_stream_duration:
+                        logger.warning("Stream timeout after %.0fs", elapsed)
+                        fallback = get_restricted_reply(
+                            _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
+                        )
+                        yield sse_event("content", {"content": fallback})
+                        yield sse_event(
+                            "done",
+                            {
+                                "message_id": None,
+                                "session_id": session_public_id,
+                                "usage": None,
+                                "taken_over": False,
+                            },
+                        )
+                        return
+
+                    try:
+                        chunk = await asyncio.wait_for(
+                            stream_iter.__anext__(), timeout=15.0
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        thinking_started = True
+                        yield sse_event(
+                            "thinking",
+                            {"elapsed": int(time.monotonic() - stream_start)},
+                        )
+                        continue
+
+                    reply_parts.append(chunk)
+                    if not content_started and chunk.strip():
+                        content_started = True
+                        if not first_token_logged:
+                            first_token_logged = True
+                            logger.info(
+                                "chat_stream first token agent_id=%s session_id=%s first_token_ms=%.1f total_before_first_ms=%.1f",
+                                request.agent_id,
+                                session_public_id,
+                                (time.monotonic() - stream_start) * 1000,
+                                (time.monotonic() - request_start) * 1000,
+                            )
+                        if thinking_started:
+                            yield sse_event("thinking_done", {})
+                    yield sse_event("content", {"content": chunk})
+                    await asyncio.sleep(0)
+            except Exception:
+                logger.exception("LLM streaming failed")
+                # Graceful fallback: return agent's restricted reply instead of a technical error
+                fallback = get_restricted_reply(
+                    _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
+                )
+                yield sse_event("content", {"content": fallback})
+                yield sse_event(
+                    "done",
+                    {
+                        "message_id": None,
+                        "session_id": session_public_id,
+                        "usage": None,
+                        "taken_over": False,
+                    },
+                )
+                return
+
+            reply = replace_source_placeholders("".join(reply_parts), sources)
+            if not reply or not reply.strip():
+                logger.warning(
+                    "LLM returned empty stream response for session %s",
+                    session_public_id,
+                )
+                reply = get_restricted_reply(
+                    _restricted_reply,
+                    "抱歉，我暂时无法回答这个问题，请换个方式提问。",
+                )
+                yield sse_event("content", {"content": reply})
+            real_usage = llm.get_last_usage()
+            if real_usage:
+                logger.info("chat stream usage from provider: %s", real_usage)
+            else:
+                logger.info(
+                    "chat stream usage: provider returned None, using character-length fallback"
+                )
+            usage = real_usage or build_chat_usage(messages, reply, use_mock_llm)
 
         # Phase 3: Persistence with fresh DB session
         async with database.AsyncSessionLocal() as persist_db:

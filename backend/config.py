@@ -156,6 +156,12 @@ class Settings(BaseSettings):
     embedding_cache_max_entries: int = 1000
     embedding_cache_trim_count: int = 200
 
+    # M10 G3 — Dify 集成层 Plan B 全局默认 (1 basjoo workspace = 1 Dify workspace 共享)
+    # 工作空间级别覆盖: workspace.dify_api_base / workspace.dify_api_key (Fernet 加密)
+    # 空字符串 = 未配置,DifyProvider 在 runtime 校验失败时立刻 raise
+    dify_api_base: str = ""
+    dify_api_key: str = ""
+
     # Multimodal chat (PR13) — image captioning + voice transcription
     media_storage_dir: str = "/app/data/attachments"
     vision_api_key: str = ""
