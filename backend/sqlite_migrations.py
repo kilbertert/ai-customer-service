@@ -503,6 +503,14 @@ def _migrate_agents(cursor: sqlite3.Cursor):
         ("dify_user_prefix", "VARCHAR(20) DEFAULT 'agent-'"),
         ("dify_inputs_schema", "TEXT"),
         ("dify_end_user_strategy", "VARCHAR(20) DEFAULT 'dual_layer'"),
+        # M10+1: Dify 集成层 4 新字段 (D7/D8/D9c)
+        # D7 — workflow 是 App 下属资源, 多 1 个外键便于回查
+        ("dify_app_id", "VARCHAR(64)"),
+        # D8 — per-agent runtime API key, Fernet 加密存储 (解密切 core.encryption)
+        ("dify_api_key", "TEXT"),
+        # D9(c) — workflow publish 状态机, 默认 'draft' 覆盖既有行
+        ("dify_publish_status", "VARCHAR(32) DEFAULT 'draft'"),
+        ("dify_publish_error", "TEXT"),
     ]
 
     # Handle the old column-name migration before we report existing columns

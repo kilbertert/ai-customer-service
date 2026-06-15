@@ -236,6 +236,17 @@ class Agent(Base):
     dify_end_user_strategy = Column(
         String(20), nullable=False, default="dual_layer"
     )  # dual_layer | legacy
+    # M10+1 D7: Dify App UUID (workflow 是 App 下属资源, 多 1 个外键便于回查)
+    dify_app_id = Column(String(64), nullable=True)
+    # M10+1 D8: per-agent runtime API key (Fernet 加密存储, 解密见 core.encryption)
+    # 来源: Dify POST /console/api/apps/{id}/api-keys 返回的 "app-xxx..." token
+    dify_api_key = Column(Text, nullable=True)
+    # M10+1 D9(c): workflow publish 状态字段
+    # 枚举: 'draft' (未 publish) | 'published' (publish 成功) | 'publish_failed' (Dify 校验失败/空 graph 等)
+    dify_publish_status = Column(
+        String(32), nullable=False, default="draft", server_default="draft"
+    )
+    dify_publish_error = Column(Text, nullable=True)  # publish 失败时的错误信息
 
     # 关系
     workspace = relationship("Workspace", back_populates="agents")
