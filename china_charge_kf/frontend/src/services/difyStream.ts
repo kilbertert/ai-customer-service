@@ -191,22 +191,35 @@ function routeEvent(
 
 export function parseEvent(rawBlock: string): DifyStreamEvent | null {
   const fields = parseFields(rawBlock)
-  if (!fields.event || !fields.data) return null
-
-  const event = fields.event
-  const dataText = fields.data
-
-  if (event === 'end') {
-    return { type: 'end' }
-  }
+  // M10 §6.2 #5: dual-source event type parsing. data JSON 可独立提供
+  // event (Dify v2 真实部署 124.243.178.156:8501 不写 SSE event 字段),
+  // 所以这里只要求 data 存在 — event 由下面 dual-source 解析兜底。
+  if (!fields.data) return null
 
   let parsed: unknown
   try {
-    parsed = JSON.parse(dataText)
+    parsed = JSON.parse(fields.data)
   } catch {
     return null
   }
   if (!isObject(parsed)) return null
+
+  // M10 §6.2 #5: data JSON `event` 字段优先于 SSE `event:` 行。
+  // - 真实 Dify v2 (M7.5) 只写 inner event 键,SSE `event:` 为空
+  // - 真实 Dify v1 只写 SSE `event:` 行,inner 键不存在
+  // - 部分中间路径会同时写两者但内容可能不一致 → 以 data 为准
+  // Pre-M10 我们只读 SSE,导致 v2 事件被静默丢成 null(SseProxyLayer
+  // 当作未知类型过滤掉),前端看到 0 事件 — 静默失败。
+  const innerEvent =
+    typeof parsed.event === 'string' && parsed.event.trim()
+      ? parsed.event.trim()
+      : ''
+  const event = innerEvent || fields.event || ''
+
+  if (event === 'end') {
+    return { type: 'end' }
+  }
+  if (!event) return null  // SSE/data 都没有 event → 真无效
 
   switch (event) {
     case 'session_started':

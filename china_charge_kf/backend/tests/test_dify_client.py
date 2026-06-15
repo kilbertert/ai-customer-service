@@ -242,6 +242,60 @@ class TestRunWorkflowBlocking:
         payload = json.loads(route.calls.last.request.content)
         assert payload["user"] == "override-user"
 
+    # ---- M10 §6.2 #3: status=succeeded 但 outputs[output_key] 为空/缺
+    # ---- → raise DifyBadRequestError (PR8 §6.5.1 → DIFY_BAD_REQUEST)。
+    # ---- 防止调用方静默消费空回复 (SseProxyLayer 错误码映射会显式报错)。
+
+    @pytest.mark.asyncio
+    async def test_200_succeeded_but_output_empty_string_raises_bad_request(
+        self, client, api_base
+    ):
+        """M10 §6.2 #3: outputs[output_key] 是空字符串 → 视为无输出 → raise。"""
+        body = {
+            "workflow_run_id": "r1",
+            "task_id": "t1",
+            "data": {
+                "id": "r1",
+                "status": "succeeded",
+                "outputs": {"output": ""},
+                "error": None,
+            },
+        }
+        with respx.mock(base_url=api_base) as router:
+            router.post("/v1/workflows/run").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            with pytest.raises(DifyBadRequestError) as exc_info:
+                await client.run_workflow_blocking(inputs={"input_text": "hi"})
+
+        assert exc_info.value.status_code == 200
+        assert "outputs['output']" in str(exc_info.value)
+        assert "is empty" in str(exc_info.value)
+        # 完整 outputs 应出现在错误信息,便于诊断
+        assert "outputs={}" in str(exc_info.value) or "'output': ''" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_200_succeeded_but_output_key_missing_raises_bad_request(
+        self, client, api_base
+    ):
+        """M10 §6.2 #3: outputs[output_key] key 缺失 → 视为无输出 → raise。"""
+        body = {
+            "data": {
+                "status": "succeeded",
+                "outputs": {},  # 完全没有 output key
+                "error": None,
+            },
+        }
+        with respx.mock(base_url=api_base) as router:
+            router.post("/v1/workflows/run").mock(
+                return_value=httpx.Response(200, json=body)
+            )
+            with pytest.raises(DifyBadRequestError) as exc_info:
+                await client.run_workflow_blocking(inputs={"input_text": "hi"})
+
+        assert "outputs['output']" in str(exc_info.value)
+        assert "is empty" in str(exc_info.value)
+
 
 # ============== run_workflow_stream ==============
 

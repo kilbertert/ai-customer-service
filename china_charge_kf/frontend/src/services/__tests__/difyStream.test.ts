@@ -156,6 +156,36 @@ describe('parseEvent', () => {
   })
 })
 
+// ============== M10 §6.2 #5 — dual-source event type parsing ==============
+
+describe('parseEvent — M10 dual-source event parsing (§6.2 #5)', () => {
+  it('data JSON event field wins over SSE event line (the exact §6.4 case)', () => {
+    // M10 §6.4 verbatim 精神: 两个 event 标识冲突时,data JSON 优先。
+    // 前端 switch 识别的合法事件名 = message_delta/session_started/
+    // message_complete/error/end。这里 SSE 写 'message'(非合法名,
+    // 类似后端 M7.5 真实 Dify v2 路径),data JSON 写合法的 'message_delta'
+    // → data 必须胜出并产出 message_delta 事件。Pre-M10 会因 SSE 'message'
+    // 不在 switch 列表返回 null(SseProxyLayer 把它过滤成 0 事件)。
+    const result = parseEvent('event: message\ndata: {"event":"message_delta","text":"hi"}')
+    expect(result).toEqual({ type: 'message_delta', text: 'hi' })
+  })
+
+  it('falls back to data JSON event when SSE event line is empty (Dify v2 path)', () => {
+    // M7.5: 真实 Dify v2 部署 (124.243.178.156:8501) 不写 SSE `event:` 字段,
+    // 只在 data JSON 内嵌 `event` 键。Pre-M10 会因 !fields.event 返回 null,
+    // SseProxyLayer 过滤掉 → 前端收到 0 事件 (静默失败)。
+    const result = parseEvent('data: {"event":"message_delta","text":"你好"}')
+    expect(result).toEqual({ type: 'message_delta', text: '你好' })
+  })
+
+  it('falls back to SSE event line when data JSON has no event field (Dify v1 path)', () => {
+    // v1 行为:SSE `event:` 是唯一来源。data JSON 没有 event 键时,
+    // SSE 仍能驱动 switch 分支 — 向后兼容。
+    const result = parseEvent('event: message_delta\ndata: {"text":"x"}')
+    expect(result).toEqual({ type: 'message_delta', text: 'x' })
+  })
+})
+
 describe('streamChat — happy path', () => {
   beforeEach(() => {
     installFetchMock(

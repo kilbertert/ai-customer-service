@@ -241,6 +241,7 @@ class DifyClient:
         *,
         inputs: dict[str, Any],
         end_user: str | None = None,
+        output_key: str = "output",
     ) -> dict[str, Any]:
         """阻塞模式调用 Workflow app。
 
@@ -253,6 +254,8 @@ class DifyClient:
         - 400 → DifyBadRequestError (DIFY_BAD_REQUEST)
         - 5xx → DifyUpstreamError (DIFY_UPSTREAM)
         - 200 + data.status=failed/stopped/partial-succeeded → DifyUpstreamError
+        - 200 + data.status=succeeded 但 outputs[output_key] 空/缺
+          → DifyBadRequestError (M10 §6.2 #3)
 
         重要：HTTP 200 但 data.status=failed 时也抛错，调用方**必须**
         走 try/except DifyUpstreamError 而不是直接用 body.outputs。
@@ -303,6 +306,22 @@ class DifyClient:
             raise DifyUpstreamError(
                 f"Dify workflow {status}: {err}; outputs={data.get('outputs')}"
             )
+
+        # M10 §6.2 #3: status=succeeded 但 outputs[output_key] 为空/缺
+        # → raise DifyBadRequestError(PR8 §6.5.1 错误码 = DIFY_BAD_REQUEST)。
+        # 避免调用方静默消费空回复 — SseProxyLayer 错误码映射会把它
+        # 转成 SSE error.code = DIFY_BAD_REQUEST,前端显式报错。
+        outputs = data.get("outputs")
+        if not isinstance(outputs, dict):
+            outputs = {}
+        output_text = outputs.get(output_key)
+        if not (isinstance(output_text, str) and output_text.strip()):
+            raise DifyBadRequestError(
+                f"Dify returned status=succeeded but outputs[{output_key!r}] is "
+                f"empty. Full outputs: {outputs!r}",
+                status_code=200,
+            )
+
         return body
 
     # ------------------------------------------------------------------
