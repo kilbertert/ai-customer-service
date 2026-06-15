@@ -73,6 +73,25 @@ export type AgentType =
 	| "custom";
 export type AgentChannelMode = "web_widget" | "whatsapp" | "email" | "custom";
 
+// M10+3 — Dify workflow mode for create_agent input. Only meaningful when
+// workspace.dify_enabled=true. "blank" creates a workflow with no nodes
+// (admin configures graph in Dify Studio); "template_v1" is reserved for
+// M11+ when a real DSL template ships.
+export type WorkflowMode = "blank" | "template_v1";
+
+// M10+3 — Dify workflow publish status returned by backend. Mirrors the
+// `agent.dify_publish_status` column in models.py (D9c tolerant contract).
+export type DifyPublishStatus = "draft" | "published" | "publish_failed";
+
+// M10+3 — Workspace config exposed via GET /api/v1/workspace/config so the
+// frontend can gate Dify-specific UI (workflow form fields, publish badge,
+// "Open in Dify Studio" link) on the workspace toggle.
+export interface WorkspaceConfig {
+	dify_enabled: boolean;
+	dify_api_base: string | null;
+	dify_admin_configured: boolean;
+}
+
 export interface Agent {
 	id: string;
 	workspace_id?: number;
@@ -138,6 +157,13 @@ export interface Agent {
 	active_session_count?: number;
 	created_at: string;
 	updated_at?: string;
+	// M10+3 — Dify integration fields (M10+1/M10+2 backend, surfaced to UI).
+	// All nullable because legacy agents (created before M10 G3) and Plan B
+	// (dify_enabled=false) workspaces will have these as null / "draft".
+	dify_app_id?: string | null;
+	dify_workflow_id?: string | null;
+	dify_publish_status?: DifyPublishStatus;
+	dify_publish_error?: string | null;
 }
 
 export interface AgentMember {
@@ -221,6 +247,11 @@ export interface AgentCreateInput {
 	persona_type?: string;
 	widget_title?: string;
 	welcome_message?: string;
+	// M10+3 — Dify workflow creation hints. Backend (M10+2) currently does not
+	// consume these (D6=a minimum-scope), but the frontend passes them through
+	// so the API contract is in place for M11+ DSL template wiring.
+	workflow_mode?: WorkflowMode;
+	icon_emoji?: string;
 }
 
 export async function parseErrorResponse(response: Response): Promise<string> {
@@ -642,6 +673,13 @@ class APIService {
 	// Agent APIs
 	async listAgents(): Promise<{ agents: Agent[]; total: number }> {
 		return this.request<{ agents: Agent[]; total: number }>("/api/v1/agents");
+	}
+
+	// M10+3 — Workspace config (read-only). Powers `useWorkspaceConfig` hook
+	// to gate Dify-specific UI (workflow form fields, publish badge, "Open
+	// in Dify Studio" link) on workspace.dify_enabled.
+	async getWorkspaceConfig(): Promise<WorkspaceConfig> {
+		return this.request<WorkspaceConfig>("/api/v1/workspace/config");
 	}
 
 	async createAgent(input: AgentCreateInput): Promise<Agent> {

@@ -182,7 +182,22 @@
     "kbOnboardingTitle": "Set up your Knowledge Base",
     "kbOnboardingDescription": "Configure embeddings to let your agent answer from your data. You can finish this later from Knowledge settings.",
     "kbOnboardingSkip": "Skip for now",
-    "kbOnboardingContinue": "Initialize Knowledge Base"
+    "kbOnboardingContinue": "Initialize Knowledge Base",
+    "difyWorkflowMode": "Workflow mode",
+    "difyWorkflowModeBlank": "Blank workflow (configure graph in Dify Studio)",
+    "difyWorkflowModeTemplate": "Template v1 (M11+ reservation)",
+    "difyIconEmoji": "Agent icon (emoji)",
+    "difyHintTitle": "Dify workflow created",
+    "difyHintBody": "Your Dify workflow (status: {{status}}) was created automatically. Open Dify Studio to add nodes and publish.",
+    "difyHintOpenStudio": "Open Dify Studio",
+    "difyStatusDraft": "⏳ Draft",
+    "difyStatusDraftTooltip": "Workflow draft, awaiting publish",
+    "difyStatusPublished": "✓ Published",
+    "difyStatusPublishedTooltip": "Workflow published; can be edited in Dify Studio",
+    "difyStatusFailed": "⚠ Publish failed",
+    "difyStatusFailedTooltip": "Publish failed; admin can retry in Dify Studio",
+    "difySectionTitle": "Dify integration",
+    "difyOpenStudio": "Open in Dify Studio ↗"
   },
   "placeholders": {
     "enterMessage": "Enter message...",

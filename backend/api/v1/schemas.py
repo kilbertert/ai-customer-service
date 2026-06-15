@@ -927,3 +927,31 @@ class RetrieveResponse(BaseModel):
     """Wrapper for consistency"""
 
     results: List[RetrieveChunk] = []
+
+
+# ========== M10+3 Workspace Config Schema ==========
+
+
+class WorkspaceConfigResponse(BaseModel):
+    """M10+3 — Read-only workspace config exposed to the frontend.
+
+    Powers ``useWorkspaceConfig`` hook in frontend-nextjs so the UI can gate
+    Dify-specific elements (workflow form fields, publish badge, "Open in
+    Dify Studio" link) on ``dify_enabled`` without a second roundtrip.
+
+    Field semantics:
+        dify_enabled: Whether Dify integration is active for this workspace
+            (admin toggle in workspace settings). When false, all Dify UI
+            elements must be hidden.
+        dify_api_base: Dify API base URL (e.g. "https://dify.example.com")
+            used to build "Open in Dify Studio" links. Null when not
+            configured.
+        dify_admin_configured: Whether the workspace has both dify_admin_email
+            AND dify_admin_password_ref set (encrypted). Frontend can show
+            a "Dify admin credentials not set up" warning when this is false
+            but dify_enabled is true (configuration mismatch).
+    """
+
+    dify_enabled: bool
+    dify_api_base: Optional[str] = None
+    dify_admin_configured: bool

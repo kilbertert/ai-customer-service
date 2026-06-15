@@ -84,6 +84,7 @@ from api.v1.schemas import (
     SourcesFileSummary,
     SessionListItem,
     SessionListResponse,
+    WorkspaceConfigResponse,
     normalize_widget_origin,
 )
 from services import URLNormalizer, TaskType, task_lock
@@ -1976,6 +1977,38 @@ async def get_contexts(
 
 
 # ========== Agent Management ==========
+
+
+# M10+3 — Workspace config (read-only, super_admin only). Frontend uses this
+# via ``useWorkspaceConfig`` hook to gate Dify-specific UI (workflow form
+# fields, publish badge, "Open in Dify Studio" link) on workspace.dify_enabled.
+# Does NOT expose the decrypted admin password — only a boolean flag.
+@router.get("/workspace/config", response_model=WorkspaceConfigResponse)
+async def get_workspace_config(
+    current_user: AdminUser = Depends(require_chat_operator),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current admin has no workspace assigned",
+        )
+    result = await db.execute(
+        select(Workspace).where(Workspace.id == current_user.workspace_id)
+    )
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+    return WorkspaceConfigResponse(
+        dify_enabled=bool(workspace.dify_enabled),
+        dify_api_base=workspace.dify_api_base,
+        dify_admin_configured=bool(
+            workspace.dify_admin_email and workspace.dify_admin_password_ref
+        ),
+    )
 
 
 @router.get("/agents", response_model=AgentListResponse)

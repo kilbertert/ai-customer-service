@@ -182,7 +182,22 @@
     "kbOnboardingTitle": "设置知识库",
     "kbOnboardingDescription": "配置嵌入服务，让智能体基于你的数据回答问题。稍后也可以在知识库设置中完成。",
     "kbOnboardingSkip": "跳过",
-    "kbOnboardingContinue": "初始化知识库"
+    "kbOnboardingContinue": "初始化知识库",
+    "difyWorkflowMode": "工作流模式",
+    "difyWorkflowModeBlank": "空白工作流（到 Dify Studio 配置 graph）",
+    "difyWorkflowModeTemplate": "模板 v1 (M11+ 预留)",
+    "difyIconEmoji": "智能体图标 (emoji)",
+    "difyHintTitle": "Dify 工作流已创建",
+    "difyHintBody": "Dify 工作流 (status: {{status}}) 已自动创建，请到 Dify Studio 添加节点并发布。",
+    "difyHintOpenStudio": "打开 Dify Studio",
+    "difyStatusDraft": "⏳ 草稿",
+    "difyStatusDraftTooltip": "工作流草稿，待发布",
+    "difyStatusPublished": "✓ 已发布",
+    "difyStatusPublishedTooltip": "工作流已发布，可在 Dify Studio 编辑",
+    "difyStatusFailed": "⚠ 发布失败",
+    "difyStatusFailedTooltip": "发布失败，管理员可在 Dify Studio 重试",
+    "difySectionTitle": "Dify 集成",
+    "difyOpenStudio": "在 Dify Studio 打开 ↗"
   },
   "placeholders": {
     "enterMessage": "输入消息...",
