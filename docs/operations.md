@@ -294,6 +294,42 @@ docker volume rm basjoo_backend-data basjoo_postgres-data
 docker compose --profile dev up -d
 ```
 
+### 5.6 Dify 数据备份 (M11+ P2)
+
+> 三层备份矩阵: basjoo DB (每日) / Dify DB (每日) / dify-data volume (每周)。三层缺一不可 — basjoo 启动后 Dify API key 才能解密 → Dify metadata 查得到 → dify-data 文件可访问。详 `docs/handoffs/M11-P2-DIFY-DATA-BACKUP.md`。
+
+**生产部署** (Ubuntu/Debian, basjoo 部署机器):
+
+```bash
+# 1. 一键安装 (复制 3 个脚本到 /opt/basjoo/scripts + 写 /etc/cron.d/basjoo-backups)
+cd /opt/basjoo/src   # 假设仓库已 clone 到 /opt/basjoo/src
+bash scripts/install-dify-backups.sh
+
+# 2. 验证
+tail -f /var/log/basjoo-dify-backup.log
+crontab -l   # 应见 3 条 dify 相关 cron (04:00 / 05:00 周日 / 05:30)
+```
+
+**手动触发** (调试或恢复演练):
+
+```bash
+/opt/basjoo/scripts/backup-dify-db.sh        # 立刻跑 dify-db 备份
+/opt/basjoo/scripts/backup-dify-data.sh      # 立刻跑 dify-data 备份
+/opt/basjoo/scripts/verify-backups.sh        # smoke test 三层备份
+```
+
+**恢复流程** (灾难场景):
+- 仅 basjoo DB 损坏 → 用 deploy-pzalo 既有 `basjoo_*.sql.gz` 恢复
+- 仅 Dify DB 损坏 → 详见 `M11-P2-DIFY-DATA-BACKUP.md §4.2`
+- 仅 dify-data 损坏 → 详见 `M11-P2-DIFY-DATA-BACKUP.md §4.3`
+- 三层同时挂 (PG 整机挂) → `§4.4` 顺序: basjoo DB → Dify DB → dify-data → 重启
+
+**3 个脚本来源** (在 repo, 跟代码同版本管理):
+- `scripts/backup-dify-db.sh` — 每日 pg_dump of `dify` schema
+- `scripts/backup-dify-data.sh` — 每周 tar czf of `dify-data` volume
+- `scripts/verify-backups.sh` — daily smoke test + 告警 (返回非零 exit 触发 cron 告警)
+- `scripts/install-dify-backups.sh` — 一键安装器 (idempotent, 重复跑安全)
+
 ---
 
 ## 6. 排错
@@ -418,3 +454,4 @@ rm -rf backend/.pytest_dbs/
 - 2026-06-12 v1.1 — 收 PR11(vi_VN locale + widget_locale)、PR12(widget language selector);删冗余;默认 admin 改记实际值(`smokepass123`);修 §5.5 自指 bug;§6 排错去重;加 §7 widget 嵌入指引
 - 2026-06-14 v1.2 — PG 宿主端口 5432 → 5433(避本机 PG 服务冲突,backend 容器内仍 5432 走 docker network),`docker-compose.yml:40` 同步
 - 2026-06-14 v1.3 — Frontend 宿主端口 3000 → 3001(避本机网易云 API 冲突,容器内仍 3000),`docker-compose.yml:256` 同步;同步 §0 / §1 / §4.5 / §6.6 端口引用
+- 2026-06-16 v1.4 — M11+ P2 ops Sprint 落地: 加 §5.6 Dify 数据备份 (3 脚本 + 一键安装器),三层备份矩阵 (basjoo DB / Dify DB / dify-data) 跨 04:00 / 05:00 周日 cron 错峰;详 `docs/handoffs/M11-P2-DIFY-DATA-BACKUP.md`
