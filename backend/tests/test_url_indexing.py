@@ -547,6 +547,7 @@ async def test_is_indexed_true_on_process_success(client, default_agent_id):
             kb = KnowledgeBase(
                 id=new_kb_id,
                 tenant_id=agent.workspace_id,
+                workspace_id=agent.workspace_id,
                 name=f"Agent {default_agent_id} KB",
                 embedding_model="BAAI/bge-m3",
                 qdrant_collection=f"kb_{new_kb_id}",
@@ -602,6 +603,7 @@ async def test_is_indexed_false_on_process_failure(client, default_agent_id):
             kb = KnowledgeBase(
                 id=new_kb_id,
                 tenant_id=agent.workspace_id,
+                workspace_id=agent.workspace_id,
                 name=f"Agent {default_agent_id} KB",
                 embedding_model="BAAI/bge-m3",
                 qdrant_collection=f"kb_{new_kb_id}",
@@ -955,6 +957,7 @@ async def test_url_list_exposes_indexing_error_for_fetch_success_process_failure
             kb = KnowledgeBase(
                 id=new_kb_id,
                 tenant_id=agent.workspace_id,
+                workspace_id=agent.workspace_id,
                 name=f"Agent {default_agent_id} KB",
                 embedding_model="BAAI/bge-m3",
                 qdrant_collection=f"kb_{new_kb_id}",
@@ -1041,6 +1044,7 @@ async def test_url_list_exposes_indexing_status_field(client, default_agent_id):
             kb = KnowledgeBase(
                 id=new_kb_id,
                 tenant_id=agent.workspace_id,
+                workspace_id=agent.workspace_id,
                 name="Test KB",
                 embedding_model="BAAI/bge-m3",
                 qdrant_collection=f"kb_{new_kb_id}",
@@ -1089,6 +1093,7 @@ def _import_scrapling_module():
     """Import scrapling-service/main.py with mocked dependencies."""
     import sys
     import importlib.util
+    from pathlib import Path
     from unittest.mock import MagicMock
 
     # Mock curl_cffi if not installed
@@ -1099,9 +1104,18 @@ def _import_scrapling_module():
         sys.modules["curl_cffi"] = curl_cffi_mock
         sys.modules["curl_cffi.requests"] = curl_cffi_requests_mock
 
-    # Use a unique module name to avoid conflicts
+    # Mock readability if not installed (optional dep in scrapling-service)
+    if "readability" not in sys.modules:
+        readability_mock = MagicMock()
+        readability_mock.Document = MagicMock()
+        sys.modules["readability"] = readability_mock
+
+    # Resolve scrapling-service/main.py relative to the test file
+    # (test_url_indexing.py → backend/tests/ → backend/ → repo_root/ → scrapling-service/main.py)
     module_name = f"scrapling_test_{id(_import_scrapling_module)}"
-    scrapling_path = "/Users/yi/Documents/Projects/basjoo/scrapling-service/main.py"
+    scrapling_path = str(
+        Path(__file__).resolve().parents[2] / "scrapling-service" / "main.py"
+    )
     spec = importlib.util.spec_from_file_location(module_name, scrapling_path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = mod

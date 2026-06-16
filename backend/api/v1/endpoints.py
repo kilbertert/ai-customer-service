@@ -3752,6 +3752,7 @@ async def clear_all_urls(
     return {
         "success": True,
         "message": "All URLs and associated KB data cleared successfully",
+        "deleted_count": deleted_url_count,
         "deleted_url_count": deleted_url_count,
         "deleted_doc_count": deleted_doc_count,
         "deleted_chunk_count": deleted_chunk_count,
