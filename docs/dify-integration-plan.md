@@ -25,6 +25,8 @@
 - §14 文档交付物清单
 - §15 关键参考
 - §16 变更日志
+- §17 M10+ Agent↔Dify 集成 (per-agent workflow 模式)
+- §18 评审签字
 
 ---
 
@@ -2360,10 +2362,173 @@ def upgrade():
 | 2026-06-13 | v2.1 (M9.5 文档同步) | **§1.2 decision log 修订 2 条 reasoning**:(1) "Dify workspace 数量" 推翻"workspace 是组织单元"假设,改为"1 vs N 是部署拓扑选择,不是 Dify 能力限制";(2) "多租户隔离层" 推翻"Dify 原生不支持细粒度租户"假设,改为"Dify native Tenant=Workspace enforcement,Backend 强化仍 valid 因 v1 部署 Dify Cloud 1 workspace"。**新增 §1.2.1 M9.5 Addendum**:Plan A (薄封装委派 Dify) vs Plan B (双层 defense-in-depth ← v1 现状) 对比表 + 部署拓扑矩阵 + 推荐 (基线 Plan B) + 触发 Plan A 切换条件清单 + §5 M3-M7 逐节重评结论。**触发原因**:2026-06-13 用户独立研究 Dify 仓库,发现 Tenant=Workspace 同一实体 + API key tenant-bound + 隔离 enforcement 每层。**新 reasoning 引用**:`memory/fact-dify-multi-tenant-architecture.md`。**当前 action**:仅文档同步,无代码变更,Plan B 保持不动 | AI |
 | 2026-06-15 | v2.5 (M10 PR4b 物理合并) | **PR4b 落地**:`backend/services/dify/strip_think.py` (new, 148 行, _StreamingThinkStripper state machine) + `sse_proxy_layer.py` 注入 stripper (4 个 Dify error 路径 + normal end 都调 `stripper.flush()`) + `backend/tests/test_strip_think.py` 24 cases 全过;`frontend-nextjs/src/services/difyStream.ts` 扩展 `ChatStreamParams.endpoint?` + `headers?`;`frontend-nextjs/src/services/api.ts` 新增 `useDifyStream` flag + 私有方法 `streamChatDify` 委派到 `difyStreamChat`;新 vitest `api.streamChatDify.test.ts` 4 cases (happy / think-strip / 4xx error / no-token headers) 全过。**验收**:PR4b 4 硬门全 PASS(165/165 backend pytest 含 24 strip_think + 180/180 frontend vitest 含 4 streamChatDify + tsc clean + M9 e2e spec 未触动)。**协议层 (SseProxyLayer) 已于 v2.4 标 FROZEN-DEPRECATED,本 PR 是协议层与 frontend M9.1 stripper 的 bridge 落点**(详见 `china_charge_kf/M10-FROZEN-README.md`)| AI |
 | 2026-06-15 | v2.6 (M10 PR4c 真实 Dify 端到端 E2E) | **PR4c 验收**:5 rounds real-Dify E2E in china_charge_kf H5 widget (Option 1, 主) + 1 round basjoo DifyProvider G1 编码 + real Dify round-trip (Option 2, 副, 不需 5 轮);Option 3 widget 跳过(per 用户 "G1 在那无意义")。**硬门 1 (Σ M9-HARD-GATE fires = 0)**: PASS,5/5 rounds 气泡无 `<think>` 残段,console errors 累计 5 条全部为 browser extension 噪声(`message channel closed`)与 M9 无关。**硬门 2 (G1 格式匹配 ≥3/5)**: PASS,5/5 function-level(`agent-agt-001-v-vis-r1-s-sess-r1-001` 等) + 1/1 real-Dify round-trip(`agent-agt-pr4c-v-visitor-pr4c-r1-s-sess-pr4c-001` → Dify 200 OK)。**硬门 5 (basjoo `/api/v1/chat/stream` → DifyProvider → 真 Dify 流式 E2E)**: **未验证** — basjoo 生产 DB `agent.dify_workflow_id` 无 agent 填充(grep 0 rows),沙箱内补跑需 SQL 注入 + 启 backend + 装可能缺包,转本机/CI 补跑(清单见 M10-REPORT §8)。**沙箱限制降级路径**:Docker Hub `python:3.13-slim` build size validation 失败 → 本地 miniconda Python 3.13.5 跑 `uvicorn app_dify.main:app --port 8012`;`npx playwright test` 被 sandbox `cmd.exe` spawn 拦 → 改用 Playwright MCP(本机等价实跑)。**配置变更**:`backend/.env` (basjoo, gitignored) + `china_charge_kf/backend/.env.dify` placeholder v2 key → real v2 key(均不 commit,本地 .env 注入)。**交付物**:`china_charge_kf/M10-REPORT.md` + 本 changelog 条目;证据 `/tmp/china_charge_kf_backend.log` + `/tmp/pr4c_round_results.txt` + `/tmp/curl_r1.txt`(`.playwright-mcp/console-*.log` 引用过期已删)。**总体验收**:**CONDITIONAL PASS** (3.5/4 硬门 + 1 缺口待本机/CI 补跑) | AI |
+| 2026-06-16 | v2.7 (M10+5 docs + ops consolidation) | **新增 §17 M10+ Agent↔Dify 集成 (per-agent workflow 模式)**:8 子章节覆盖架构变化 / 数据模型 4 字段 / 双客户端边界 / 2-step 创建流程 / **D9a-D9f 6 补丁 (Dify 1.14.2 兼容性)** / D2 rollback vs D9 publish 容错 / 3 级 _resolve_api_key / 部署清单。**§17 评审签字 → §18** (避免节号冲突)。**`docker-compose.yml` 新增 `dify` opt-in profile service**(沙箱内不实跑 Dify 1.14.2 镜像,留本机)。**v1 handoff backport**:`docs/handoffs/M10PLUS-agent-dify-integration.md` 修 5 处(D3 2-step / D9 base64 / D9 空 graph / §7 E2E 沙箱预检 / §9 决策 v2 Dify 1.14.2 实测修正)。**G7 测试债修复**:`create_app_and_workflow` 缺 `return` 补齐 (D9d 引入的 fall-through bug),`test_dify_admin_client.py` 14 个 mock URL `/console/api/auth/login` → `/console/api/login` (D9a drift 修正)。**M10+ chain 闭环**:c9f5a8a (M10+1) → caf5ab8 (M10+2) → f5a9a9d (M10+3) → 8dc84e9 (M10+4) → M10+5 docs+ops。**沙箱 G1-G7 硬门全绿**(146/146 pytest),**Dify 1.14.2 镜像 + 沙箱实际起容器验证留本机/CI** (DOCKER IMAGE TOO LARGE) | AI |
 
 ---
 
-## §17 评审签字
+## §17 M10+ Agent↔Dify 集成 (per-agent workflow 模式)
+
+> **章节状态**：2026-06-16 M10+5 落地，覆盖 c9f5a8a → caf5ab8 → f5a9a9d → 8dc84e9 四个 PR 的事实状态。
+> **基线 HEAD**：8dc84e9 (M10+4) + M10+5 docs backport。
+> **M10+4 沙箱预检**：4/7 PASS + 2 PARTIAL + 1 DEFER — 详见 `docs/handoffs/M10PLUS4-REPORT.md`。
+> **M10+5 验收**：CONDITIONAL PASS (G1-G7 硬门沙箱内全绿；Dify 1.14.2 镜像 + 沙箱实际起容器验证留本机) — 详见 `docs/handoffs/M10PLUS5-REPORT.md`。
+
+### 17.1 架构变化 — 从 Plan B (workspace-level) 升级到 per-agent workflow
+
+M10+ 阶段的架构核心命题：**让 basjoo `create_agent` 端点联动 Dify `POST /console/api/apps`**，让 basjoo agent 与 Dify workflow 1:1 绑定。
+
+| 维度 | M10 现状 (基线 19cfda2) | M10+ 状态 (HEAD 8dc84e9 + M10+5) |
+|---|---|---|
+| Agent ↔ Dify 关系 | `dify_workflow_id` 字段预留，**无创建联动** | `create_agent` 同步创建 Dify app + workflow + 拿 runtime `app-xxx` key |
+| Dify 鉴权 | Plan B (workspace-level service account) | Plan B 保留 + 新增 per-agent API key (D8) |
+| 创建时机 | n/a (无创建) | (a) 同步 — basjoo 阻塞等 Dify 返回 |
+| 失败回滚 | n/a | (a) Dify 失败 → basjoo 端不留 Agent 记录 (D2) |
+| Workflow 内容 | n/a | (b) 空 graph → admin 后续在 Dify UI 配图 (D3) |
+| Publish 时机 | n/a | (c) basjoo 自动 publish, 400/422 容错不阻塞 (D9) |
+
+**Plan A vs Plan B (M9.5 Addendum 锁定 Plan B)**：本章节不重新评估该决策。M10+ 仍走 Plan B 共享 Dify workspace，靠 `dify_user_prefix` (G1 双层 end_user 编码) 做 basjoo workspace 隔离。
+
+### 17.2 数据模型 — Agent 表 4 个新字段 (M10+1)
+
+**Migration 路径**：`backend/sqlite_migrations/0XX_add_agent_dify_app_id_and_api_key.sql` + 0XX_add_agent_dify_publish_status.sql (M10+1.1, M10+1.6)。
+
+| 字段 | 类型 | 默认 | 加密 | 作用 |
+|---|---|---|---|---|
+| `dify_app_id` | `String(64)` NULL | NULL | 否 | Dify App UUID (M10+1 新增, D7) |
+| `dify_workflow_id` | `String(64)` NULL | NULL | 否 | Dify workflow draft UUID (M10 已有) |
+| `dify_api_key` | `Text` NULL | NULL | **Fernet 加密** | Dify runtime `app-xxx` token (M10+1 新增, D8) |
+| `dify_publish_status` | `String(32)` NOT NULL | `"draft"` | 否 | 枚举: `draft` / `published` / `publish_failed` (M10+1.6, D9 c) |
+| `dify_publish_error` | `Text` NULL | NULL | 否 | publish 失败时的诊断信息 (M10+1.6, D9 c) |
+
+**与 M10 字段的关系**：
+- `dify_user_prefix` / `dify_inputs_schema` / `dify_end_user_strategy` 三个字段 M10 已有，保留。
+- `Workspace.dify_admin_email` (明文) + `Workspace.dify_admin_password_ref` (Fernet 加密) 复用 M10 schema,**无需新加字段**。
+
+### 17.3 双客户端 — DifyAdminClient (Console) vs DifyRuntimeClient (Bearer app-xxx)
+
+basjoo 端需要**两套** Dify 客户端,**职责严格分离**：
+
+| 客户端 | Auth 模型 | 用途 | 入口路径 |
+|---|---|---|---|
+| `DifyAdminClient` (M10+1) | Flask session cookie (3 cookie: access/refresh/csrf) | 创建 app、懒创建 workflow、enable API、创建 API key、publish workflow | `POST /console/api/login` (D9a) + `/console/api/...` |
+| `DifyRuntimeClient` (`backend/services/dify/dify_client.py`, M10 PR4a) | `Authorization: Bearer app-xxx` | workflow 执行 (`run_workflow_stream`) | `POST /v1/workflows/run` (D9f 强制 `/v1` 后缀) |
+
+**双客户端边界**：
+- `DifyAdminClient` 凭据存 `Workspace.dify_admin_email` / `dify_admin_password_ref`，basjoo 端单次解密后 LRU cache 1h。
+- `DifyRuntimeClient` 凭据存 `Agent.dify_api_key` (Fernet 加密)，**每个 agent 一个 token** (D8 决策)。
+- 两个客户端在业务代码层**互不调用**。M10+1 `create_app_and_workflow` + `enable_api_and_create_key` 走 Admin，chat_stream 走 Runtime。
+
+### 17.4 创建流程 — 2-step create_app_and_workflow (D3 课程修正)
+
+**v1 handoff 假设 (错误)**：`create_app(mode="workflow")` 会内嵌创建 Workflow 行。**实际情况 (G2 调研)**：Dify `AppService.create_app` **只**创建 `App` 行，Workflow 行是**懒创建**的 (首次 `POST /apps/{id}/workflows/draft` 时)。
+
+修正后的 M10+1 5 步路径：
+
+```
+[1] basjoo create_agent endpoint (D1 同步)
+   ↓
+[2] DifyAdminClient.login (D9a: /console/api/login)
+   ↓
+[3] POST /console/api/apps (Step 1: 创建 App 行)
+   ↓
+[4] POST /console/api/apps/{id}/workflows/draft (Step 2: 懒创建空 Workflow 行, D9c)
+   ↓
+[5] POST /console/api/apps/{id}/api-enable + POST /console/api/apps/{id}/api-keys
+   (D8: 拿 per-agent app-xxx token, Fernet 加密后写入 agent.dify_api_key)
+   ↓
+[6] POST /console/api/apps/{id}/workflows/publish (D9c/D9e: 容错 400/422)
+   ↓
+[7] basjoo agent 行 commit (或 step 1-5 失败 → rollback)
+```
+
+**关键方法** (`backend/services/dify/admin_client.py`):
+- `create_app_and_workflow(name, mode="workflow", ...) -> {app_id, workflow_id}` — 复合 Step 1+2
+- `enable_api_and_create_key(app_id) -> "app-xxx..."` — 复合 Step 5
+- `publish_workflow(app_id) -> bool` — Step 6, 容错返回 bool
+
+**原子性 (D2 课程修正)**：Step 1 失败 → 不调 Step 2 (干净返回 502)。Step 2 失败 → Step 1 调 `DELETE /apps/{id}` 回滚 (best-effort, swallow 异常避免双抛)。
+
+### 17.5 Dify 1.14.2 兼容性 (D9a-D9f 6 补丁)
+
+M10+4 沙箱真 Dify (124.243.178.156:8501, Dify 1.14.2) E2E 实做总结出 **6 个 1.14.2 vs 1.x 通用版本的兼容性差异**。这些是 M10+1 代码必须有的补丁，**不是 v1 handoff 假设的"RSA 加密 password"** (实测 1.14.2 是 base64)。
+
+| 补丁 ID | 位置 | 旧行为 (v1 handoff 假设) | Dify 1.14.2 实际行为 | M10+1 修复 |
+|---|---|---|---|---|
+| **D9a** | `admin_client.py:162` | `POST /console/api/auth/login` | `POST /console/api/login` (1.14.2 改名) | 改 URL |
+| **D9b** | `admin_client.py:166` | password 明文 | password **base64 编码** (`FieldEncryption.decrypt_field` 是 base64.b64decode) | `b64encode(password).decode()` |
+| **D9c** | `admin_client.py:312` | `graph: {}` 合法 | Dify 1.14.2 接受空 dict 但**校验更严**，给 `{nodes:[], edges:[]}` 显式空更稳 | 改 body 格式 |
+| **D9d** | `admin_client.py:327-346` | sync_draft 必返 workflow.id | 1.14.2 可能返 `{result:success, hash, updated_at}` **无 id**，需 fallback `GET /apps/{id}/workflows` 列表 | 加 fallback, 失败时 `workflow_id=""` + log |
+| **D9e** | `admin_client.py:431` | publish 无 body | 1.14.2 publish **要求 `PublishWorkflowPayload` body** (`{"marked_name": "..."}`),空 body 返 415 | 加 `PublishWorkflowPayload` body |
+| **D9f** | `provider.py:251` | runtime api_base 原样用 | runtime 路径必须 `/v1/workflows/run` 但 `dify_api_base` 可能不含 `/v1` | 强制拼接 `/v1` 后缀 |
+
+**D9 修复合并 commit**：`8dc84e9` (M10+4 commit, 6 补丁)。**E2E 验证**：M10+4 §5 4-step create agent 端到端跑通 (124.243.178.156:8501 实 Dify 1.14.2) + §7 chat_stream 200 OK。
+
+**D9d 关键测试债 (M10+5 baseline G7 发现)**：D9d 的 `return {"app_id": ..., "workflow_id": ""}` fallback 引入时漏写了**正常成功路径的 `return`**，导致 `create_app_and_workflow` 隐式返 None。M10+5 baseline 验证时 4 个测试 fail (TestCreateAppAndWorkflow::test_happy_path / TestAuth::test_401_retry / TestCreateAgentDifyIntegration x2)，**已在 M10+5 commit 修**。详见 `docs/handoffs/M10PLUS5-REPORT.md` §4 D9 落点。
+
+**M11+ 跟进项**：
+- Dify 1.15+ 升级时 6 补丁**逐一回归测试** (尤其 D9c graph 格式, 1.15 可能换 schema)
+- D9d fallback 路径 (workflow_id="") 在 agent 创建后 chat_stream 走 Dify 会失败 — 需前端 DifyStatusBadge 提示 admin "请到 Dify Studio 配图 + publish"
+
+### 17.6 容错策略 — D2 rollback vs D9 publish 容错
+
+basjoo 集成层有**两类**容错，**严格区分**：
+
+| 错误类型 | 触发条件 | 行为 | 字段 | 上游错误码 |
+|---|---|---|---|---|
+| **D2 rollback** (Step 1-5 失败) | Dify 5xx / Auth 401 重试 1 次仍失败 / HTTPError / UpstreamError | `await db.rollback()` + `raise HTTPException(502)` | basjoo Agent 行**不留** | 502 Bad Gateway |
+| **D9 容错** (Step 6 publish) | Dify 400 / 422 (空 graph 校验失败等) | `agent.dify_publish_status = "publish_failed"` + 写 `dify_publish_error` | basjoo Agent 行**保留** (admin 后补) | 201 Created (含 status='publish_failed') |
+| **D9 容错 (续)** | Dify 5xx (publish 端服务器错) | `raise DifyUpstreamError` → D2 rollback 触发 | basjoo Agent 行**不留** | 502 Bad Gateway |
+
+**业务区分 (kickoff §5.3)**：
+- Step 1-5 失败 = **系统故障** (Dify 不可达, 凭据错, 5xx) → 回滚干净，admin 排查后再试
+- Step 6 publish 400/422 = **业务可恢复** (admin 还没在 Dify UI 配图) → 不阻塞主流程, 状态徽章提示 admin 后补
+- Step 6 publish 5xx = 系统故障 → 回滚
+
+### 17.7 3 级 _resolve_api_key 回退 (D8 per-agent 优先)
+
+`backend/services/dify/provider.py:_resolve_api_key` (M10 PR4a + M10+1.4) 优先级链：
+
+```
+[1] self.agent.dify_api_key     (per-agent, M10+1 新增, Fernet 解密) ← D8
+[2] self.workspace.dify_api_key (M10 legacy, workspace-level)
+[3] settings.dify_api_key       (Plan B 全局默认, 仅部署时配置)
+[4] raise DifyConfigError       (3 级全空)
+```
+
+**关键边界**：
+- D8 选择 (a) Per-agent — 避免 D9(c) 里 `workspace.dify_api_key` (实为 admin session 凭据) 跟 runtime `app-xxx` token 混用
+- M10 既有 `workspace.dify_api_key` 路径**不破坏** (M10 闭环测试 165/165 仍过) — 是 fallback 第 2 级
+- 第 1 级 (per-agent) 在 `enable_api_and_create_key` 后立即写入,D9(c) publish_failed 不影响 key 写入
+
+### 17.8 部署清单 — env vars / Fernet key / Dify 1.14.2 网络可达性
+
+**生产部署 6 项 checklist**：
+
+| # | 项 | 责任 | 验证命令 |
+|---|---|---|---|
+| 1 | Dify 1.14.2 镜像可达 | SRE | `curl -f http://<dify-host>:8501/console/api/setup` (返 401 即 OK, 标识 Dify 已起) |
+| 2 | Dify admin 账号预创建 + workspace 已建 | SRE / 运营 | 一次性在 Dify UI 操作,记录 email/password |
+| 3 | `ENCRYPTION_KEY` (Fernet) 持久化到 `backend-data` volume | SRE | 启动时自动生成 + 持久化,不需要手动;**注意 volume 备份** |
+| 4 | `Workspace.dify_*` 6 字段 (api_base / api_key / workspace_id / enabled / admin_email / admin_password_ref) | 运营 | basjoo admin UI 或 DB 写入,Fernet 加密字段通过 `core.encryption.encrypt_api_key()` |
+| 5 | `cors_allow_null_origin` 配 (widget 跨域) | SRE | 仅当 widget 跨域部署在 `Origin: null` iframe 时设 true |
+| 6 | `RATE_LIMIT_PER_MINUTE` + `RATE_LIMIT_BURST_SIZE` | SRE | 默认 1000/200,生产建议 600/120 防 Dify 端 429 |
+
+**docker-compose 集成** (`docker-compose.yml` opt-in profile)：
+- `dify` service 走 opt-in profile `["dify"]` (默认不启),本地/自托管需要时 `docker compose --profile dify up -d`
+- 生产/开发环境**不依赖** dify profile, 仍走远程 Dify 1.14.2
+- DB / Redis 复用本仓 postgres (database=`dify`, 默认 `postgres` 库给 basjoo) + redis (DB=1, 跟 basjoo 0 隔离) + qdrant (Dify 1.14.2 支持 qdrant 作 vector DB)
+- 端口 `8501:5001` 跟沙箱真 Dify 124.243.178.156:8501 对齐
+- 健康检查 `GET /console/api/setup` 返 401 = healthy
+- 镜像 ~3GB, 拉取慢, **生产建议独立 docker-compose 部署 Dify** (不放本仓 stack)
+
+**M11+ 待补**：
+- Dify 1.14.2 Helm chart 部署 (K8s 路径, M10+5 沙箱 skip 容器实跑)
+- 多 Dify workspace 切换 (Plan A, 见 §1.2.1 M9.5 Addendum)
+- Dify publish status webhook 同步 (避免手动 DB 改 status)
+
+---
+
+## §18 评审签字
 
 | 角色 | 姓名 | 签字 | 日期 |
 |---|---|---|---|
@@ -2374,3 +2539,4 @@ def upgrade():
 | 产品 |  |  |  |
 
 > 本文档必须经评审签字后方可作为后续 M1-M10 实施的基线。
+

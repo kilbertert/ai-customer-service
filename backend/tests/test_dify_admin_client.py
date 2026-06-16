@@ -111,7 +111,7 @@ class TestCreateAppAndWorkflow:
     @pytest.mark.asyncio
     async def test_happy_path_returns_app_and_workflow_ids(self):
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post("/console/api/apps").mock(
                 return_value=httpx.Response(200, json={"id": "app-uuid-1"})
             )
@@ -128,7 +128,7 @@ class TestCreateAppAndWorkflow:
     async def test_create_app_400_raises_bad_request_no_rollback(self):
         """Step 1 失败 → 直接抛, 无 App 行可回滚."""
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             apps_route = router.post("/console/api/apps").mock(
                 return_value=httpx.Response(400, text="name too long")
             )
@@ -148,7 +148,7 @@ class TestCreateAppAndWorkflow:
         由外层 ``except Exception`` 捕获并触发 DELETE 回滚。
         """
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post("/console/api/apps").mock(
                 return_value=httpx.Response(200, json={"id": "app-rollback"})
             )
@@ -177,7 +177,7 @@ class TestEnableApiAndCreateKey:
     @pytest.mark.asyncio
     async def test_happy_path_returns_token(self):
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post("/console/api/apps/app-x/api-enable").mock(
                 return_value=httpx.Response(200, json={"enable_api": True})
             )
@@ -202,7 +202,7 @@ class TestAuth:
     @pytest.mark.asyncio
     async def test_login_401_raises_auth_error(self):
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(
+            router.post("/console/api/login").mock(
                 return_value=httpx.Response(401, text="bad creds")
             )
             client = _admin_client_factory()
@@ -214,7 +214,7 @@ class TestAuth:
     async def test_401_retry_succeeds_after_relogin(self):
         """第一次请求 401 → 清缓存 + 重登 + 重放 1 次 成功."""
         with respx.mock(base_url="https://dify.test") as router:
-            login_route = router.post("/console/api/auth/login").mock(
+            login_route = router.post("/console/api/login").mock(
                 return_value=_login_response()
             )
             apps_route = router.post("/console/api/apps").mock(
@@ -295,7 +295,7 @@ class TestSessionCache:
     async def test_cache_ttl_minus_one_forces_relogin(self):
         client = _admin_client_factory(cache_ttl=-1)
         with respx.mock(base_url="https://dify.test") as router:
-            login_route = router.post("/console/api/auth/login").mock(
+            login_route = router.post("/console/api/login").mock(
                 return_value=_login_response()
             )
             router.post("/console/api/apps").mock(
@@ -321,7 +321,7 @@ class TestPublishWorkflow:
     @pytest.mark.asyncio
     async def test_200_returns_true(self):
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post(
                 "/console/api/apps/app-x/workflows/publish"
             ).mock(return_value=httpx.Response(200, json={}))
@@ -335,7 +335,7 @@ class TestPublishWorkflow:
     async def test_400_returns_false_no_raise(self):
         """D9c: 空 graph 校验失败 → False, caller 标 publish_failed."""
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post(
                 "/console/api/apps/app-x/workflows/publish"
             ).mock(return_value=httpx.Response(400, text="empty graph"))
@@ -348,7 +348,7 @@ class TestPublishWorkflow:
     @pytest.mark.asyncio
     async def test_422_returns_false_no_raise(self):
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post(
                 "/console/api/apps/app-x/workflows/publish"
             ).mock(return_value=httpx.Response(422, text="missing Start node"))
@@ -362,7 +362,7 @@ class TestPublishWorkflow:
     async def test_500_raises_upstream_error(self):
         """5xx 真错误 → 抛, caller 走 D2 回滚."""
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post(
                 "/console/api/apps/app-x/workflows/publish"
             ).mock(return_value=httpx.Response(500, text="server error"))
@@ -417,7 +417,7 @@ class TestCreateAgentDifyIntegration:
         await _enable_workspace_dify()
 
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post("/console/api/apps").mock(
                 return_value=httpx.Response(200, json={"id": "app-fail"})
             )
@@ -511,7 +511,7 @@ class TestCreateAgentDifyIntegration:
         await _enable_workspace_dify()
 
         with respx.mock(base_url="https://dify.test") as router:
-            router.post("/console/api/auth/login").mock(return_value=_login_response())
+            router.post("/console/api/login").mock(return_value=_login_response())
             router.post("/console/api/apps").mock(
                 return_value=httpx.Response(200, json={"id": "app-rollback"})
             )

@@ -354,6 +354,8 @@ class DifyAdminClient:
             await self._delete_app(app_id)
             raise
 
+        return {"app_id": app_id, "workflow_id": workflow_id}
+
     async def _delete_app(self, app_id: str) -> None:
         """``DELETE /apps/{id}`` — ``create_app_and_workflow`` 失败时回滚用。
 
