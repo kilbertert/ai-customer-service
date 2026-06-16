@@ -140,6 +140,37 @@ class TestCreateAppAndWorkflow:
         assert apps_route.call_count == 1
 
     @pytest.mark.asyncio
+    async def test_d9d_regression_returns_dict_not_none(self):
+        """D9d regression guard (M10+4 → M10+5 fix):
+        ``create_app_and_workflow`` happy path **必须**返 ``dict``,不能隐式 None
+        (fall-through bug 修法是在 ``except`` 后显式 ``return {"app_id", "workflow_id"}``)。
+
+        M10+4 commit ``8dc84e9`` 引入 D9d fallback 时漏写成功路径 ``return``,
+        导致函数 fall-through 到 None。 本测试在 happy path 上**额外**断言
+        ``isinstance(result, dict)`` + ``"app_id" in result`` + ``result is not None``,
+        锁住回归。
+        """
+        with respx.mock(base_url="https://dify.test") as router:
+            router.post("/console/api/login").mock(return_value=_login_response())
+            router.post("/console/api/apps").mock(
+                return_value=httpx.Response(200, json={"id": "app-uuid-1"})
+            )
+            router.post("/console/api/apps/app-uuid-1/workflows/draft").mock(
+                return_value=httpx.Response(200, json={"id": "wf-uuid-1"})
+            )
+            client = _admin_client_factory()
+
+            result = await client.create_app_and_workflow(name="回归测试 Agent")
+
+        # 显式 return-type assertions (M10+5 §10.5 #3)
+        assert result is not None, "create_app_and_workflow returned None (D9d fall-through bug)"
+        assert isinstance(result, dict), f"expected dict, got {type(result).__name__}"
+        assert "app_id" in result, "result missing 'app_id' key"
+        assert "workflow_id" in result, "result missing 'workflow_id' key"
+        assert result["app_id"] == "app-uuid-1"
+        assert result["workflow_id"] == "wf-uuid-1"
+
+    @pytest.mark.asyncio
     async def test_step2_failure_rolls_back_step1(self):
         """Step 2 失败 → DELETE /apps/{id} 回滚 step 1, 再抛原异常.
 
