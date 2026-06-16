@@ -245,7 +245,12 @@ class DifyProvider:
         """
         api_base = self.workspace.dify_api_base or settings.dify_api_base
         api_key = self._resolve_api_key()
-        return DifyClient(api_base=api_base, api_key=api_key, end_user=end_user)
+        # Dify 1.14.2 runtime API at /v1/workflows/run; DifyClient concatenates path
+        # so ensure /v1 suffix on api_base.
+        runtime_api_base = api_base.rstrip("/")
+        if not runtime_api_base.endswith("/v1"):
+            runtime_api_base = runtime_api_base + "/v1"
+        return DifyClient(api_base=runtime_api_base, api_key=api_key, end_user=end_user)
 
     def _build_inputs(
         self,

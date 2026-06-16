@@ -159,10 +159,10 @@ class DifyAdminClient:
         )
         try:
             resp = await client.post(
-                "/console/api/auth/login",
+                "/console/api/login",
                 json={
                     "email": self.admin_email,
-                    "password": self.admin_password,
+                    "password": __import__("base64").b64encode(self.admin_password.encode()).decode(),
                     "remember_me": True,
                 },
             )
@@ -310,7 +310,7 @@ class DifyAdminClient:
                 "POST",
                 f"/console/api/apps/{app_id}/workflows/draft",
                 json_body={
-                    "graph": {},
+                    "graph": {"nodes": [], "edges": []},
                     "features": {},
                     "environment_variables": [],
                     "conversation_variables": [],
@@ -324,10 +324,26 @@ class DifyAdminClient:
                 )
             workflow_id = wf_resp.json().get("id")
             if not workflow_id:
-                raise DifyUpstreamError(
-                    f"sync_draft_workflow returned no id: {wf_resp.text[:200]}"
+                # Dify 1.14.2 returns {result:success, hash, updated_at} without id
+                # Fetch via GET /console/api/apps/{app_id}/workflows
+                try:
+                    list_resp = await self._request(
+                        "GET",
+                        f"/console/api/apps/{app_id}/workflows",
+                    )
+                    if list_resp.status_code < 400:
+                        items = list_resp.json() or []
+                        if items:
+                            workflow_id = items[0].get("id")
+                except Exception as fetch_err:
+                    logger.warning("fetch workflows list failed: %s", fetch_err)
+            if not workflow_id:
+                logger.info(
+                    "create_app_and_workflow: Dify 1.14.2 sync_draft returned no id; "
+                    "workflow will be linked after Dify Studio config. app_id=%s",
+                    app_id,
                 )
-            return {"app_id": app_id, "workflow_id": workflow_id}
+                return {"app_id": app_id, "workflow_id": ""}
         except Exception as step2_err:
             # 原子性: step 2 失败, 回滚 step 1 (best-effort, 不二次抛)
             logger.warning(
@@ -420,8 +436,12 @@ class DifyAdminClient:
             - step 1-4 失败 = 系统故障, 回滚
         """
         try:
+            # Dify 1.14.2 publish endpoint requires explicit Content-Type: application/json
+            # with valid PublishWorkflowPayload body; empty body → 415
             resp = await self._request(
-                "POST", f"/console/api/apps/{app_id}/workflows/publish"
+                "POST",
+                f"/console/api/apps/{app_id}/workflows/publish",
+                json_body={"marked_name": "", "marked_comment": ""},
             )
         except DifyError:
             raise  # 5xx 已 raise, 不要 swallow
