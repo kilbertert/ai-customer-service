@@ -18,7 +18,7 @@
 | §5 创建 agent (4-step) | ✅ PASS | `agt_c8fc364ad10f` + dify_app_id=`3d0f30ed...` + workflow_id=`f6d6dc18...` + `dify_publish_status='published'` |
 | §6 Dify Studio 配图 | ⚠️ PARTIAL | 跳过 Studio 手动; API POST /draft 在 paramiko 沙箱 hang; workflow_id 已知但 graph 空 |
 | §7 chat_stream 走 Dify | ✅ PASS | 200 + thinking event + SSE; Dify path 真跑通; restricted_reply fallback 因 workflow 无 LLM 节点 |
-| §8 清理 | ⏳ DEFER | 6 个测试 app 残留, 沙箱保留给本机 |
+| §8 清理 | ⏳ DEFER | 3 个测试 app 残留, 沙箱保留给本机 |
 
 **5 个 D9 patch 已写进 working tree (待 M10+5 / M11+ 集成进 DifyAdminClient)**:
 1. `admin_client.py:162` `/console/api/auth/login` → `/console/api/login` (D9a)

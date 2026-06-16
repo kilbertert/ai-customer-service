@@ -50,8 +50,18 @@ curl -s -c /tmp/dify-cookies.txt -X POST \
   -d "{\"email\":\"${DIFY_ADMIN_EMAIL}\",\"password\":\"$(printf %s "${DIFY_ADMIN_PASSWORD}" | base64)\"}"
 # 注: D9b 修复后 password 字段是 base64 编码,不是 RSA 加密
 
+# 2.5 提取 CSRF token (Dify 1.14.2 console 端点走 double-submit 模式)
+#    漏了 X-CSRF-Token 会 401 unauthorized "CSRF token is missing or invalid"
+export CSRF_TOKEN=$(awk '$6 == "csrf_token" { print $7 }' /tmp/dify-cookies.txt)
+if [ -z "${CSRF_TOKEN}" ]; then
+  echo "ERROR: 登录响应未设 csrf_token cookie,Dify 1.14.2 必备" >&2
+  exit 1
+fi
+echo "Got csrf_token: ${CSRF_TOKEN:0:12}..."
+
 # 3. 列 app
 curl -s -b /tmp/dify-cookies.txt \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   "${DIFY_API_BASE}/console/api/apps?page=1&limit=50" \
   | python -c "
 import sys, json
@@ -61,8 +71,10 @@ for a in apps:
     print(f\"{a.get('id','?')} | {a.get('name','?')} | {a.get('mode','?')} | {a.get('created_at','?')}\")"
 
 # 4. 删除 (按 ID 批量, 名字含 'M10+' / 'Test Agent' / 'test_' 等 sandbox 标记)
-for app_id in <list-of-6-ids>; do
-  curl -s -b /tmp/dify-cookies.txt -X DELETE \
+for app_id in <list-of-N-ids>; do
+  curl -s -b /tmp/dify-cookies.txt \
+    -H "X-CSRF-Token: ${CSRF_TOKEN}" \
+    -X DELETE \
     "${DIFY_API_BASE}/console/api/apps/${app_id}"
   echo "Deleted ${app_id}"
 done
