@@ -12,6 +12,7 @@ from api.endpoints import auth
 from api.v1 import endpoints as v1_endpoints
 from api.v1 import kb_document_endpoints as v1_kb_doc_endpoints
 from api.v1.tenants import router as tenants_router
+from services.dify.exceptions import DifyConfigError
 from services.scheduler import (
     agent_purge_scheduler,
     url_fetch_scheduler,
@@ -206,6 +207,29 @@ async def unhandled_exception_handler(request, exc):
             "detail": "Internal server error",
             "exception_type": type(exc).__name__,
             "correlation_id": correlation_id,
+        },
+    )
+
+
+@app.exception_handler(DifyConfigError)
+async def dify_config_error_handler(request, exc):
+    """M11 PR4 修复: Dify 集成层未配置 → 503 + actionable message。
+
+    之前 DifyConfigError 走通用 500 handler, 用户只看到 "Internal server error"。
+    现在返回 503 + ``detail`` 列出具体 missing env vars, 让 operator / 前端
+    知道补什么配置 (``DIFY_API_BASE`` / ``DIFY_ADMIN_EMAIL`` / ``DIFY_ADMIN_PASSWORD``)。
+    """
+    logger = logging.getLogger("uvicorn")
+    logger.error(
+        "DifyConfigError on %s %s: %s",
+        request.method, request.url.path, exc,
+    )
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": str(exc),
+            "exception_type": "DifyConfigError",
+            "code": "dify_not_configured",
         },
     )
 

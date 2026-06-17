@@ -211,6 +211,14 @@ services:
       - RATE_LIMIT_BURST_SIZE=${RATE_LIMIT_BURST_SIZE:-200}
       - LOG_LEVEL=DEBUG
       - SCRAPLING_SERVICE_URL=http://scrapling-service:8001
+      # M11 PR3 — Dify 集成层 (Plan B 全局默认)
+      - DIFY_API_BASE=${DIFY_API_BASE:-}
+      - DIFY_ADMIN_EMAIL=${DIFY_ADMIN_EMAIL:-}
+      - DIFY_ADMIN_PASSWORD=${DIFY_ADMIN_PASSWORD:-}
+      # M11 PR3 — Dify 集成层 (Plan B 全局默认)
+      - DIFY_API_BASE=${DIFY_API_BASE:-}
+      - DIFY_ADMIN_EMAIL=${DIFY_ADMIN_EMAIL:-}
+      - DIFY_ADMIN_PASSWORD=${DIFY_ADMIN_PASSWORD:-}
     volumes:
       - backend-data:/app/data
       - ./backend:/app
