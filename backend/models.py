@@ -3,11 +3,13 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import (
+    BigInteger,
     Column,
-    String,
     DateTime,
     Integer,
     Text,
+    TIMESTAMP,
+    String,
     Boolean,
     ForeignKey,
     JSON,
@@ -68,6 +70,39 @@ class Workspace(Base):
     # DifyAdminClient.from_workspace 用这 2 个字段构造生产侧管理 API 客户端
     dify_admin_email = Column(String(255), nullable=True)
     dify_admin_password_ref = Column(Text, nullable=True)  # Fernet 加密
+
+    # M11 PR2: Dify tenant provisioning 状态机 (新 workspace 自助签约 Dify tenant)
+    # dify_tenant_id: Dify tenant UUID (NULL = 还没签 / bootstrap workspace)
+    # dify_account_id: Dify account UUID (NULL = 还没签)
+    # dify_provisioning_status: 'pending' / 'provisioning' / 'ready' / 'failed'
+    #   - pending: 待发起 provisioning
+    #   - provisioning: 正在调用 Dify API (D5 job 中)
+    #   - ready: Dify tenant 创建成功 (tenant_id + account_id 都非空)
+    #   - failed: 连续 retry 仍失败,等 ops 介入
+    # dify_provisioning_attempts: 累计失败次数,达 5 次后转 failed
+    # dify_provisioning_last_error: 最近一次失败原因(给 ops debug)
+    # signup_idempotency_key: 注册时一次性幂等键,UUID v4,
+    #   同 key 多次请求不会创建多个 workspace (DB 层 UNIQUE 约束)
+    dify_tenant_id = Column(String(36), nullable=True)
+    dify_account_id = Column(String(36), nullable=True)
+    dify_provisioning_status = Column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    dify_provisioning_attempts = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    dify_provisioning_last_error = Column(Text, nullable=True)
+    signup_idempotency_key = Column(String(36), unique=True, nullable=True)
+
+    # M11 PR2 索引:由 SQLAlchemy ``create_all`` 在 fresh DB 自动建,
+    # existing DB 由 ``sqlite_migrations._migrate_workspaces_dify_provisioning``
+    # 用 ``CREATE INDEX IF NOT EXISTS`` 补。注:``signup_idempotency_key`` 的
+    # UNIQUE 约束由上面 ``unique=True`` 触发,SQLite 把它实现为
+    # ``sqlite_autoindex_workspaces_*``(对 NULL 用 distinct 语义,符合预期)。
+    __table_args__ = (
+        Index("idx_workspaces_dify_tenant_id", "dify_tenant_id"),
+        Index("idx_workspaces_dify_provisioning_status", "dify_provisioning_status"),
+    )
 
     # 关系
     agents = relationship(
@@ -780,4 +815,53 @@ class MessageAttachment(Base):
 
     __table_args__ = (
         Index("ix_msg_attach_sha256", "sha256"),
+    )
+
+
+class AuditLog(Base):
+    """M11 PR2 — Dify provisioning 审计日志。
+
+    用途: 记录 workspace 在 Dify 注册流程的关键操作(创建 tenant / 创建 account /
+    重试 / 失败),便于事后回溯 + 安全审计。
+
+    设计取舍:
+      - BigInteger autoincrement pk: 单调递增,审计表只追加、不更新;
+        避免 UUID 写入开销,便于范围扫描(latest N events per tenant)。
+      - tenant_id 必填: 没有 tenant 上下文的 audit 行无意义。
+      - actor_user_id 必填: 操作者,可追溯。值 = admins.id (Integer)。
+      - dify_request_id 可空: 不是所有 audit 行都对应 Dify 一次 API 调用
+        (例如本地校验失败),允许 NULL。
+      - correlation_id 必填: 一次业务流程共享同一 correlation_id,
+        便于把多条 audit 行串成一条 timeline。
+      - status: 'success' / 'failed' (后续可扩 'pending' 但当前 PR 不需要)。
+      - created_at: 应用层写时由 DB 默认 CURRENT_TIMESTAMP 填入,
+        避免应用时间漂移。
+    """
+
+    __tablename__ = "audit_logs"
+
+    # SQLite 仅 INTEGER PRIMARY KEY 是 rowid 别名(自动填充);BIGINT 在 SQLite
+    # 是普通列,需要显式传值。用 with_variant 让 SQLite 走 INTEGER,Postgres
+    # 保留 BIGSERIAL(autoincrement=True → SERIAL/BIGSERIAL)。
+    id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    tenant_id = Column(String(36), nullable=False)
+    actor_user_id = Column(Integer, nullable=False)
+    action = Column(String(64), nullable=False)
+    dify_request_id = Column(String(36), nullable=True)
+    correlation_id = Column(String(36), nullable=False)
+    status = Column(String(20), nullable=False)  # 'success' / 'failed'
+    error_detail = Column(Text, nullable=True)
+    created_at = Column(
+        TIMESTAMP, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_audit_logs_tenant_id_created_at", "tenant_id", "created_at"
+        ),
+        Index("idx_audit_logs_correlation_id", "correlation_id"),
     )

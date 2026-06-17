@@ -448,6 +448,40 @@ rm -rf backend/.pytest_dbs/
 
 ---
 
+## M11-INIT. M11 bootstrap workspace 初始化 SOP
+
+**触发**:M11 PR2 部署后,**必须**执行一次(否则所有老 workspace 落在
+`dify_provisioning_status='pending'`,永远不会被 D5 job 处理 — 因为它们
+不需要 Dify tenant,是历史 bootstrap workspace)。
+
+**SQL**:
+
+```sql
+UPDATE workspaces
+SET dify_provisioning_status = 'ready',
+    dify_provisioning_attempts = 0
+WHERE dify_tenant_id IS NULL
+  AND dify_provisioning_status = 'pending';
+```
+
+**验证**:
+
+```sql
+SELECT id, name, dify_tenant_id, dify_provisioning_status
+FROM workspaces
+ORDER BY id;
+```
+
+期望:bootstrap workspace(`dify_tenant_id IS NULL`)状态全部 = `ready`。
+
+**回滚**:不需要(本 SOP 只标 ready,不破坏任何数据 — 新 workspace 的
+`dify_provisioning_status` 仍是 `pending`,会走正常的 Dify 签约流程)。
+
+**自动化建议**:把这条 SQL 写进 `install-deploy.sh` 在 M11 PR2 部署 step
+自动执行(若检测到 `dify_provisioning_status` 列存在但有 `pending` 行)。
+
+---
+
 ## 变更记录
 
 - 2026-06-11 v1.0 — 初稿(基于 PR1-PR10 + dev 实际操作)
@@ -455,3 +489,4 @@ rm -rf backend/.pytest_dbs/
 - 2026-06-14 v1.2 — PG 宿主端口 5432 → 5433(避本机 PG 服务冲突,backend 容器内仍 5432 走 docker network),`docker-compose.yml:40` 同步
 - 2026-06-14 v1.3 — Frontend 宿主端口 3000 → 3001(避本机网易云 API 冲突,容器内仍 3000),`docker-compose.yml:256` 同步;同步 §0 / §1 / §4.5 / §6.6 端口引用
 - 2026-06-16 v1.4 — M11+ P2 ops Sprint 落地: 加 §5.6 Dify 数据备份 (3 脚本 + 一键安装器),三层备份矩阵 (basjoo DB / Dify DB / dify-data) 跨 04:00 / 05:00 周日 cron 错峰;详 `docs/handoffs/M11-P2-DIFY-DATA-BACKUP.md`
+- 2026-06-17 v1.5 — M11 PR2 部署: 加 §M11-INIT bootstrap workspace 初始化 SOP(`WHERE dify_tenant_id IS NULL AND dify_provisioning_status='pending'` → `ready`),部署后必跑一次;详 `docs/m11/m11-pr2-schema.md` §M11-INIT

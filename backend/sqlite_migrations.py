@@ -416,6 +416,11 @@ def run_sqlite_migrations(database_url: str) -> None:
             _migrate_workspaces_dify_fields(cursor)
         # agents 4 字段:加在 _migrate_agents 列表尾部,见下方
 
+        # ── M11 PR2: Dify provisioning 6 字段 + audit_logs 表 ─────────────
+        if _table_exists(cursor, "workspaces"):
+            _migrate_workspaces_dify_provisioning(cursor)
+        _create_audit_logs_table(cursor)
+
         conn.commit()
 
     except Exception:
@@ -853,4 +858,121 @@ def _migrate_workspaces_dify_fields(cursor: sqlite3.Cursor) -> None:
             ("dify_admin_email", "VARCHAR(255)"),
             ("dify_admin_password_ref", "TEXT"),
         ],
+    )
+
+
+# ---- M11 PR2: Workspace provisioning 6 字段 + audit_logs 表 -----------------
+
+
+def _migrate_workspaces_dify_provisioning(cursor: sqlite3.Cursor) -> None:
+    """M11 PR2 — Workspace 表加 6 个 Dify tenant provisioning 字段。
+
+    Idempotent. Safe to run multiple times. See:
+      docs/m11/m11-pr2-schema.md §3.1
+
+    字段语义:
+      - dify_tenant_id: Dify tenant UUID (NULL = 还没签 / bootstrap workspace)
+      - dify_account_id: Dify account UUID (NULL = 还没签)
+      - dify_provisioning_status: 'pending' / 'provisioning' / 'ready' / 'failed'
+        - pending → provisioning (D5 job 启动时)
+        - provisioning → ready (tenant + account 创建成功)
+        - provisioning → failed (重试 5 次仍失败,等 ops 介入)
+      - dify_provisioning_attempts: 累计失败次数(给 D5 job 决策)
+      - dify_provisioning_last_error: 最近一次失败原因(给 ops debug)
+      - signup_idempotency_key: 注册幂等键,UNIQUE 约束
+
+    历史 workspace bootstrap:
+      默认 dify_provisioning_status='pending',对 bootstrap workspace 不合适
+      (它不需要 Dify tenant)。手工初始化 SQL 见 docs/operations.md §X
+      ("M11 bootstrap workspace 初始化 SOP"):
+          UPDATE workspaces
+          SET dify_provisioning_status='ready', dify_provisioning_attempts=0
+          WHERE dify_tenant_id IS NULL AND dify_provisioning_status='pending';
+    """
+    _ensure_columns(
+        cursor,
+        "workspaces",
+        [
+            ("dify_tenant_id", "VARCHAR(36)"),
+            ("dify_account_id", "VARCHAR(36)"),
+            (
+                "dify_provisioning_status",
+                "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            ),
+            (
+                "dify_provisioning_attempts",
+                "INTEGER NOT NULL DEFAULT 0",
+            ),
+            ("dify_provisioning_last_error", "TEXT"),
+            # 注:signup_idempotency_key 的 UNIQUE 约束不能写在 ALTER ADD COLUMN
+            # 里(SQLite 不支持),改用下方 CREATE UNIQUE INDEX 实现。
+            ("signup_idempotency_key", "VARCHAR(36)"),
+        ],
+    )
+
+    # 索引:idx_workspaces_dify_tenant_id — 回查 workspace by Dify tenant
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_dify_tenant_id "
+        "ON workspaces(dify_tenant_id)"
+    )
+
+    # 索引:idx_workspaces_dify_provisioning_status — D5 retry sweeper 扫
+    # pending/provisioning/failed 行,SQLite 没 partial index 支持,建全列索引
+    # (Postgres partial index 见 docs/m11/m11-pr2-schema.md §4 — 由后续 PR 用
+    # Alembic 迁,本 PR 只确保 SQLite 跑通)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_dify_provisioning_status "
+        "ON workspaces(dify_provisioning_status)"
+    )
+
+    # UNIQUE 约束:signup_idempotency_key 防重复注册
+    # SQLite 不支持在已有列上加 UNIQUE 约束的 ALTER 语法,CREATE UNIQUE INDEX
+    # 是 SQLite 里实现 unique 约束的惯用法(与 spec 里 Alembic 的
+    # op.create_unique_constraint 等价)
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_signup_idempotency_key "
+        "ON workspaces(signup_idempotency_key) "
+        "WHERE signup_idempotency_key IS NOT NULL"
+    )
+
+
+def _create_audit_logs_table(cursor: sqlite3.Cursor) -> None:
+    """M11 PR2 — 新增 audit_logs 表。
+
+    Idempotent (CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS).
+    See:
+      docs/m11/m11-pr2-schema.md §3.2
+
+    表用途: 记录 workspace 在 Dify 注册流程的关键操作,便于事后回溯 +
+    安全审计。仅追加、不更新。
+
+    索引:
+      - idx_audit_logs_tenant_id_created_at: 范围扫描(latest N events per tenant)
+      - idx_audit_logs_correlation_id: 把多条 audit 行串成一条 timeline
+    """
+    if _table_exists(cursor, "audit_logs"):
+        return  # 已建过,跳过(幂等)
+
+    cursor.execute(
+        """
+        CREATE TABLE audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id VARCHAR(36) NOT NULL,
+            actor_user_id INTEGER NOT NULL,
+            action VARCHAR(64) NOT NULL,
+            dify_request_id VARCHAR(36),
+            correlation_id VARCHAR(36) NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            error_detail TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id_created_at "
+        "ON audit_logs(tenant_id, created_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation_id "
+        "ON audit_logs(correlation_id)"
     )
