@@ -1,0 +1,20 @@
+# basjoo M11 PR1 — Dify 1.14.2 fork overlay
+# Build: docker build -f Dockerfile.fork -t langgenius/dify-api:1.14.2-fork-m11-v1.0 .
+# Smoke:  docker run --rm langgenius/dify-api:1.14.2-fork-m11-v1.0 python -c \
+#         "from services.account_service import TenantService; \
+#          print(hasattr(TenantService, 'provision_tenant_by_admin'))"
+
+FROM langgenius/dify-api:1.14.2
+
+# basjoo M11 PR1 — admin provisioning endpoint patch
+COPY api/services/account_service.py /app/api/services/account_service.py
+COPY api/services/errors/account.py /app/api/services/errors/account.py
+COPY api/services/admin_provision_schemas.py /app/api/services/admin_provision_schemas.py
+COPY api/controllers/console/workspace/workspace.py /app/api/controllers/console/workspace/workspace.py
+COPY api/controllers/console/workspace/models.py /app/api/controllers/console/workspace/models.py
+COPY api/models/account.py /app/api/models/account.py
+COPY api/migrations/versions/2026_06_17_basjoo_admin_provision.py /app/api/migrations/versions/
+
+LABEL fork.basjoo.m11="admin-provision-v1.0" \
+      fork.basjoo.m11.upstream="langgenius/dify-api:1.14.2"
+COPY api/migrations/versions/63f9175e515b_merge_branches.py /app/api/migrations/versions/
