@@ -25,12 +25,26 @@ interface AuthContextType {
 	login: (email: string, password: string) => Promise<void>;
 	logout: () => void;
 	register: (email: string, password: string, name: string) => Promise<void>;
+	signupAsTenant: (data: {
+		workspaceName: string;
+		name: string;
+		email: string;
+		password: string;
+		termsAccepted: boolean;
+	}) => Promise<{
+		access_token: string;
+		workspace_id: number;
+		dify_initial_password: string;
+		provisioning_status: string;
+		correlation_id: string;
+	}>;
 	isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_STORAGE_KEY = "token";
 const ADMIN_STORAGE_KEY = "admin";
+const WORKSPACE_ID_STORAGE_KEY = "workspace_id";
 
 interface LoginResponseData {
 	access_token: string;
@@ -211,9 +225,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		await login(email, password);
 	};
 
+	const signupAsTenant = async (data: {
+		workspaceName: string;
+		name: string;
+		email: string;
+		password: string;
+		termsAccepted: boolean;
+	}) => {
+		const response = await fetch(`${API_BASE_URL}/api/v1/tenants/register`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				workspace_name: data.workspaceName,
+				name: data.name,
+				email: data.email,
+				password: data.password,
+				terms_accepted: data.termsAccepted,
+			}),
+		});
+
+		if (!response.ok) {
+			const message = await parseErrorResponse(response);
+			throw new Error(message || "注册失败");
+		}
+
+		const result = await response.json();
+		// Persist token + workspace_id, then fetch admin via /api/admin/me so
+		// the rest of the app (RequireAuth, AdminLayout) sees a full session.
+		localStorage.setItem(TOKEN_STORAGE_KEY, result.access_token);
+		localStorage.setItem(WORKSPACE_ID_STORAGE_KEY, String(result.workspace_id));
+		setToken(result.access_token);
+
+		try {
+			const meResp = await fetch(`${API_BASE_URL}/api/admin/me`, {
+				headers: { Authorization: `Bearer ${result.access_token}` },
+			});
+			if (meResp.ok) {
+				const me = await meResp.json();
+				const adminObj: Admin = {
+					id: me.id,
+					email: me.email,
+					name: me.name,
+					role: me.role,
+				};
+				setAdmin(adminObj);
+				localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(adminObj));
+			}
+		} catch {
+			// Non-fatal: token is persisted, admin refresh can retry on next mount.
+		}
+
+		return result;
+	};
+
 	return (
 		<AuthContext.Provider
-			value={{ admin, token, login, logout, register, isLoading }}
+			value={{ admin, token, login, logout, register, signupAsTenant, isLoading }}
 		>
 			{children}
 		</AuthContext.Provider>

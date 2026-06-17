@@ -1530,6 +1530,22 @@ async def chat_stream(
                             _agent.id,
                             workspace_id,
                         )
+                    elif (
+                        getattr(_workspace_obj, "dify_provisioning_status", "ready")
+                        != "ready"
+                    ):
+                        # M11 PR4 (M7): workspace provisioning not ready → 503
+                        # so the widget surfaces a retryable error instead of
+                        # dispatching to a half-configured Dify tenant.
+                        logger.warning(
+                            "chat_stream: workspace %s provisioning=%s, returning 503",
+                            workspace_id,
+                            _workspace_obj.dify_provisioning_status,
+                        )
+                        raise HTTPException(
+                            status_code=503,
+                            detail="Workspace provisioning not ready",
+                        )
 
                 logger.info(
                     "chat_stream prepare done agent_id=%s session_id=%s prepare_ms=%.1f",

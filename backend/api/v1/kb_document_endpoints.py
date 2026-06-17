@@ -12,6 +12,7 @@ from fastapi import (
     Path,
     UploadFile,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.endpoints.auth import require_admin_or_super_admin, require_tenant_access
@@ -29,7 +30,7 @@ from api.v1.schemas import (
     RetrieveResponse,
 )
 from database import get_db
-from models import AdminUser
+from models import AdminUser, KbDocument, Tenant
 from services.kb_document_processor import KbDocumentProcessor
 from services.kb_retrieval_service import KbRetrievalService
 from services.kb_service import KbService
@@ -44,6 +45,32 @@ MAX_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED = {"txt", "md", "html", "pdf", "docx", "xlsx"}
 
 processor = KbDocumentProcessor()
+
+
+async def _assert_kb_document_in_workspace(
+    doc_id: str,
+    current_user: AdminUser,
+    db: AsyncSession,
+) -> None:
+    """M6: enforce that a KB document belongs to the caller's workspace.
+
+    KbDocument.tenant_id → Tenant.workspace_id chain. super_admin bypasses.
+    Raises 404 if the doc is missing, 403 on cross-workspace access.
+    """
+    if current_user.role == "super_admin":
+        return
+    doc_res = await db.execute(
+        select(KbDocument.tenant_id).where(KbDocument.id == doc_id)
+    )
+    doc_tenant_id = doc_res.scalar_one_or_none()
+    if not doc_tenant_id:
+        raise HTTPException(404, "Document not found")
+    tenant_res = await db.execute(
+        select(Tenant.workspace_id).where(Tenant.id == doc_tenant_id)
+    )
+    doc_workspace_id = tenant_res.scalar_one_or_none()
+    if current_user.workspace_id is None or doc_workspace_id != current_user.workspace_id:
+        raise HTTPException(403, "Document does not belong to your workspace")
 
 
 @router.post(
@@ -117,6 +144,7 @@ async def get_kb_document_progress(
     _tenant: str = Depends(require_tenant_access),
 ):
     """Get document indexing progress."""
+    await _assert_kb_document_in_workspace(doc_id, current_user, db)
     result = await processor.get_document_progress(tenant_id, doc_id, db)
     if result.get("status") == "not_found":
         raise HTTPException(404, "Document not found")
@@ -136,6 +164,7 @@ async def delete_kb_document(
     _tenant: str = Depends(require_tenant_access),
 ):
     """Delete a document and its chunks from Qdrant and DB."""
+    await _assert_kb_document_in_workspace(doc_id, current_user, db)
     await processor.delete_document(tenant_id, kb_id, doc_id, db)
 
 

@@ -48,6 +48,17 @@ class ModelNotFoundError(LLMError):
     code = "MODEL_NOT_FOUND"
 
 
+class WorkspaceNotReadyError(LLMError):
+    """Raised when a workspace's Dify provisioning is not in 'ready' state.
+
+    M11 PR4 (M3): any tenant-scoped LLM/Dify call that needs the workspace
+    to be live must short-circuit with this exception rather than proceeding
+    against a half-configured tenant.
+    """
+
+    code = "WORKSPACE_NOT_READY"
+
+
 def classify_llm_error(error: Exception) -> LLMError:
     """Normalize provider-specific exceptions into stable error codes."""
 
@@ -897,3 +908,79 @@ def get_llm_service(
             base_url=resolved_api_base or "https://api.openai.com/v1",
             model=resolved_model or "gpt-4o",
         )
+
+
+# ---------------------------------------------------------------------------
+# M11 PR4 (M3): TenantScopedLLMProvider
+# ---------------------------------------------------------------------------
+
+
+class TenantScopedLLMProvider:
+    """M11 PR4 — workspace-scoped LLM/Dify client factory.
+
+    Routes per-tenant Dify client construction by ``workspace_id`` so admin
+    operations and retry endpoints can target the right tenant. Validates
+    provisioning status before yielding a client: any non-``ready`` state
+    raises :class:`WorkspaceNotReadyError` so the caller surfaces a 503
+    instead of dispatching against a half-configured tenant.
+
+    Spec note: spec section 3.1 referenced ``DifyAdminClient.for_tenant``;
+    the actual method is :meth:`DifyAdminClient.from_workspace` (M10+1).
+    Both produce an equivalent admin client keyed by workspace attributes.
+    """
+
+    def __init__(self, db) -> None:
+        self.db = db
+
+    async def get_dify_client(self, workspace_id: int):
+        """Return a DifyAdminClient bound to ``workspace_id`` or raise.
+
+        Args:
+            workspace_id: basjoo ``Workspace.id`` (int PK).
+
+        Returns:
+            :class:`DifyAdminClient` constructed via ``from_workspace``,
+            which reads ``dify_api_base`` / ``dify_admin_email`` /
+            ``dify_admin_password_ref`` from the workspace row.
+
+        Raises:
+            WorkspaceNotReadyError: workspace is not in ``ready`` state
+                (pending / provisioning / failed / failed_permanent).
+            ValueError: workspace row does not exist.
+        """
+        from models import Workspace  # local import to avoid circulars
+        from services.dify.admin_client import DifyAdminClient
+
+        ws = await self.db.get(Workspace, workspace_id)
+        if ws is None:
+            raise ValueError(f"Workspace {workspace_id} not found")
+
+        if getattr(ws, "dify_provisioning_status", "ready") != "ready":
+            raise WorkspaceNotReadyError(
+                f"Dify workspace not ready: "
+                f"workspace_id={workspace_id} status={ws.dify_provisioning_status}"
+            )
+
+        return DifyAdminClient.from_workspace(ws)
+
+
+# ---------------------------------------------------------------------------
+# Module-level helper for chat_stream & M7 widget routing
+# ---------------------------------------------------------------------------
+
+
+async def get_tenant_scoped_dify_client(workspace, db):
+    """Convenience wrapper used by ``chat_stream`` and other widget paths.
+
+    Reads ``workspace.dify_provisioning_status`` and short-circuits with
+    :class:`WorkspaceNotReadyError` so the endpoint can return 503 cleanly
+    without trying to construct a Dify client for a non-ready workspace.
+    """
+    if getattr(workspace, "dify_provisioning_status", "ready") != "ready":
+        raise WorkspaceNotReadyError(
+            f"Dify workspace not ready: "
+            f"workspace_id={workspace.id} status={workspace.dify_provisioning_status}"
+        )
+    from services.dify.admin_client import DifyAdminClient
+
+    return DifyAdminClient.from_workspace(workspace)

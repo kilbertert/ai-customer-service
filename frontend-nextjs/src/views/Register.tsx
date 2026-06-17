@@ -23,18 +23,14 @@ export const Register = () => {
 		fetch(`${API_BASE_URL}/api/admin/registration-settings`)
 			.then((res) => res.json())
 			.then((data) => {
-				if (!data.bootstrap_required) {
-					navigate("/login", { replace: true });
-				} else {
-					setBootstrapAllowed(true);
-					setChecking(false);
-				}
+				setBootstrapAllowed(Boolean(data.bootstrap_required));
+				setChecking(false);
 			})
 			.catch(() => {
 				setError(t("errors.setupCheckFailed"));
 				setChecking(false);
 			});
-	}, [navigate, t]);
+	}, [t]);
 
 	const handleRegister = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -105,16 +101,56 @@ export const Register = () => {
 						{error}
 					</div>
 				)}
-				<Link
-					to="/login"
+				<div
+					className="liquid-glass-card"
 					style={{
-						color: "var(--color-accent-primary)",
-						fontWeight: 500,
-						textDecoration: "none",
+						padding: "var(--space-8)",
+						maxWidth: "420px",
+						textAlign: "center",
 					}}
 				>
-					{t("initialSetup.loginLink")}
-				</Link>
+					<h2
+						style={{
+							fontSize: "var(--text-xl)",
+							fontWeight: 600,
+							marginBottom: "var(--space-3)",
+						}}
+					>
+						{t("initialSetup.notBootstrapTitle")}
+					</h2>
+					<p
+						style={{
+							color: "var(--color-text-secondary)",
+							fontSize: "var(--text-sm)",
+							marginBottom: "var(--space-6)",
+						}}
+					>
+						{t("initialSetup.notBootstrapBody")}
+					</p>
+					<Link
+						to="/login"
+						className="btn-primary"
+						style={{
+							display: "inline-block",
+							padding: "var(--space-3) var(--space-6)",
+							textDecoration: "none",
+							marginRight: "var(--space-3)",
+						}}
+					>
+						{t("initialSetup.loginLink")}
+					</Link>
+					<Link
+						to="/signup"
+						style={{
+							color: "var(--color-accent-primary)",
+							fontWeight: 500,
+							textDecoration: "none",
+							fontSize: "var(--text-sm)",
+						}}
+					>
+						{t("tenantSignup.loginLink")}
+					</Link>
+				</div>
 			</div>
 		);
 	}

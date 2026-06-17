@@ -319,6 +319,31 @@ export const Login = () => {
 					</p>
 				)}
 
+				{!bootstrapRequired && (
+					<p
+						style={{
+							textAlign: "center",
+							marginTop: "var(--space-6)",
+							color: "var(--color-text-secondary)",
+							fontSize: "var(--text-sm)",
+						}}
+					>
+						{t("login.signupPrompt")}{" "}
+						<Link
+							to="/signup"
+							data-testid="signup-link"
+							style={{
+								color: "var(--color-accent-primary)",
+								fontWeight: 500,
+								textDecoration: "none",
+								transition: "color var(--transition-fast)",
+							}}
+						>
+							{t("login.signupLink")}
+						</Link>
+					</p>
+				)}
+
 				<div
 					style={{
 						textAlign: "center",
