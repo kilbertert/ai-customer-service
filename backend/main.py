@@ -185,14 +185,28 @@ async def log_requests(request, call_next):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request, exc):
-    """Return JSON for unhandled exceptions instead of plain-text 500."""
+    """Return JSON for unhandled exceptions instead of plain-text 500.
+
+    M11 PR4 修复: 在响应中携带 ``exception_type`` 和 ``correlation_id``,
+    让前端/用户能定位具体错误类别, 排查时直接搜日志:
+    ``Unhandled exception [<correlation_id>]``。
+    ``detail`` 保持脱敏 (不泄漏内部异常 message)。
+    """
+    import uuid as _uuid
+
+    correlation_id = str(_uuid.uuid4())
     logger = logging.getLogger("uvicorn")
     logger.exception(
-        f"Unhandled exception on {request.method} {request.url.path}: {exc}"
+        f"Unhandled exception [{correlation_id}] on "
+        f"{request.method} {request.url.path}: {type(exc).__name__}: {exc}"
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"},
+        content={
+            "detail": "Internal server error",
+            "exception_type": type(exc).__name__,
+            "correlation_id": correlation_id,
+        },
     )
 
 

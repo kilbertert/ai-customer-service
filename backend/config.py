@@ -162,6 +162,17 @@ class Settings(BaseSettings):
     dify_api_base: str = ""
     dify_api_key: str = ""
 
+    # M11 PR3 — 系统级 Dify super-admin 凭据,用于租户 provisioning 阶段。
+    # 设计原因: provisioning 发生在 workspace 还没有 Dify 凭据之前 (chicken-and-egg),
+    # 因此必须有一个系统全局的 Dify 超级管理员用于创建新 workspace。
+    # 与 workspace 级别的 dify_admin_email/dify_admin_password_ref (M10+2) 是两个层:
+    # - 系统级 = basjoo 平台管理员 (启动期配置, 用来"建 workspace")
+    # - workspace 级 = workspace 自己的 owner (workspace 创建后, 用来"管 workspace")
+    # 留空 → DifyTenantProvisioner 在构造时 fail-fast 抛 DifyConfigError,
+    # /api/v1/tenants/register 返回 503 而不是 500
+    dify_admin_email: str = ""
+    dify_admin_password: str = ""
+
     # Multimodal chat (PR13) — image captioning + voice transcription
     media_storage_dir: str = "/app/data/attachments"
     vision_api_key: str = ""

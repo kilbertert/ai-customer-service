@@ -41,6 +41,22 @@ interface AuthContextType {
 	isLoading: boolean;
 }
 
+/**
+ * Error thrown by AuthContext actions when the backend returns a non-2xx
+ * response. Carries the HTTP status code so the UI can map it to a localized
+ * message (e.g., 409 → "该邮箱已被注册") instead of showing a generic
+ * "注册失败" string.
+ */
+export class ApiError extends Error {
+	status: number;
+
+	constructor(message: string, status: number) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+	}
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_STORAGE_KEY = "token";
 const ADMIN_STORAGE_KEY = "admin";
@@ -246,7 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 		if (!response.ok) {
 			const message = await parseErrorResponse(response);
-			throw new Error(message || "注册失败");
+			throw new ApiError(message || "注册失败", response.status);
 		}
 
 		const result = await response.json();

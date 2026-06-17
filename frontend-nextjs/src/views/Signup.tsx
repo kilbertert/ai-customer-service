@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth, ApiError } from "../context/AuthContext";
 import { useTranslation } from "react-i18next";
 import { PasswordRevealModal } from "../components/PasswordRevealModal";
 
@@ -58,9 +58,16 @@ export const Signup = () => {
 				navigate("/", { replace: true });
 			}
 		} catch (err: unknown) {
-			const message =
-				err instanceof Error ? err.message : t("errors.signupFailed");
-			setError(message);
+			// M11 PR4: 把 HTTP 状态码映射到 i18n key
+			// 409 Conflict → "该邮箱已被注册" (errors.emailExists)
+			// 其他错误 → 通用 signupFailed
+			if (err instanceof ApiError && err.status === 409) {
+				setError(t("errors.emailExists"));
+			} else {
+				const message =
+					err instanceof Error ? err.message : t("errors.signupFailed");
+				setError(message);
+			}
 		} finally {
 			setLoading(false);
 		}
