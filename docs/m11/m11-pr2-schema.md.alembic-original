@@ -1,0 +1,210 @@
+# M11 PR2 — basjoo 数据模型迁移
+
+> **依赖**:无(可与 PR1 并行起步)
+> **工作量**:0.2 周 1 人
+> **下游**:PR3 / PR4 都依赖此 schema
+
+---
+
+## 1. 范围
+
+basjoo 侧 2 项 schema 变更:
+1. `workspaces` 表加 6 列 + 2 索引
+2. 新增 `audit_logs` 表
+
+---
+
+## 2. Alembic 迁移脚本
+
+**文件路径**:`backend/alembic/versions/2026_06_17_xxxx_add_dify_provisioning.py`
+
+```python
+"""add dify provisioning fields
+
+Revision ID: 2026_06_17_xxxx
+Revises: <previous>
+Create Date: 2026-06-17
+"""
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
+
+
+revision = "2026_06_17_xxxx"
+down_revision = "<previous>"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # 1. workspaces 表加 6 列
+    op.add_column("workspaces", sa.Column("dify_tenant_id", sa.String(36), nullable=True))
+    op.add_column("workspaces", sa.Column("dify_account_id", sa.String(36), nullable=True))
+    op.add_column("workspaces", sa.Column(
+        "dify_provisioning_status", sa.String(20), nullable=False, server_default="pending"))
+    op.add_column("workspaces", sa.Column(
+        "dify_provisioning_attempts", sa.Integer, nullable=False, server_default="0"))
+    op.add_column("workspaces", sa.Column("dify_provisioning_last_error", sa.Text, nullable=True))
+    op.add_column("workspaces", sa.Column("signup_idempotency_key", sa.String(36), nullable=True))
+
+    # 2. 索引
+    op.create_index("idx_workspaces_dify_tenant_id", "workspaces", ["dify_tenant_id"], unique=False)
+    op.create_index(
+        "idx_workspaces_dify_provisioning_status",
+        "workspaces",
+        ["dify_provisioning_status"],
+        unique=False,
+        postgresql_where=sa.text("dify_provisioning_status IN ('failed', 'provisioning')"),
+    )
+
+    # 3. signup_idempotency_key UNIQUE 约束
+    op.create_unique_constraint(
+        "uq_workspaces_signup_idempotency_key", "workspaces", ["signup_idempotency_key"])
+
+    # 4. audit_logs 新表
+    op.create_table(
+        "audit_logs",
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
+        sa.Column("tenant_id", sa.String(36), nullable=False),
+        sa.Column("actor_user_id", sa.Integer, nullable=False),
+        sa.Column("action", sa.String(64), nullable=False),
+        sa.Column("dify_request_id", sa.String(36), nullable=True),
+        sa.Column("correlation_id", sa.String(36), nullable=False),
+        sa.Column("status", sa.String(20), nullable=False),
+        sa.Column("error_detail", sa.Text, nullable=True),
+        sa.Column("created_at", sa.TIMESTAMP, nullable=False,
+                  server_default=sa.text("CURRENT_TIMESTAMP")),
+    )
+
+    # 5. audit_logs 索引
+    op.create_index("idx_audit_logs_tenant_id_created_at", "audit_logs",
+                    ["tenant_id", "created_at"], unique=False)
+    op.create_index("idx_audit_logs_correlation_id", "audit_logs",
+                    ["correlation_id"], unique=False)
+
+
+def downgrade() -> None:
+    op.drop_index("idx_audit_logs_correlation_id", "audit_logs")
+    op.drop_index("idx_audit_logs_tenant_id_created_at", "audit_logs")
+    op.drop_table("audit_logs")
+
+    op.drop_constraint("uq_workspaces_signup_idempotency_key", "workspaces")
+    op.drop_index("idx_workspaces_dify_provisioning_status", "workspaces")
+    op.drop_index("idx_workspaces_dify_tenant_id", "workspaces")
+    op.drop_column("workspaces", "signup_idempotency_key")
+    op.drop_column("workspaces", "dify_provisioning_last_error")
+    op.drop_column("workspaces", "dify_provisioning_attempts")
+    op.drop_column("workspaces", "dify_provisioning_status")
+    op.drop_column("workspaces", "dify_account_id")
+    op.drop_column("workspaces", "dify_tenant_id")
+```
+
+---
+
+## 3. SQLAlchemy ORM 模型更新
+
+**文件**:`backend/models.py`
+
+### 3.1 Workspace 模型加 6 个字段
+
+```python
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    owner_email = Column(String, nullable=False)
+
+    # === M11 新增 ===
+    dify_tenant_id = Column(String(36), nullable=True)
+    dify_account_id = Column(String(36), nullable=True)
+    dify_provisioning_status = Column(String(20), nullable=False, default="pending")
+    dify_provisioning_attempts = Column(Integer, nullable=False, default=0)
+    dify_provisioning_last_error = Column(Text, nullable=True)
+    signup_idempotency_key = Column(String(36), unique=True, nullable=True)
+    # === 新增结束 ===
+```
+
+### 3.2 新增 AuditLog 模型
+
+```python
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    actor_user_id = Column(Integer, nullable=False)
+    action = Column(String(64), nullable=False)
+    dify_request_id = Column(String(36), nullable=True)
+    correlation_id = Column(String(36), nullable=False, index=True)
+    status = Column(String(20), nullable=False)  # success/failed
+    error_detail = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_audit_logs_tenant_id_created_at", "tenant_id", "created_at"),
+    )
+```
+
+---
+
+## 4. SQLite / Postgres 双兼容
+
+| 数据库 | 行为 |
+|--------|------|
+| **SQLite**(开发 / 测试) | `postgresql_where` 被忽略,索引生效但不过滤 |
+| **Postgres**(生产) | `postgresql_where` 生效,部分索引仅包含 `failed` / `provisioning` 行 |
+
+PR2 验收时**两个数据库都必须跑 migration**:
+```bash
+alembic upgrade head  # dev SQLite
+BASJOO_TEST_MODE=1 alembic upgrade head  # test SQLite
+# prod 手动在生产 Postgres 跑
+```
+
+---
+
+## 5. bootstrap workspace 手工初始化
+
+无历史数据迁移。bootstrap workspace 的 `dify_provisioning_status` 默认 `pending`,**必须**手工初始化为 `ready`(因为它没有对应 Dify tenant):
+
+```sql
+-- 手工 SQL,只跑一次(在 alembic upgrade 后):
+UPDATE workspaces
+SET dify_provisioning_status = 'ready',
+    dify_provisioning_attempts = 0
+WHERE dify_tenant_id IS NULL
+  AND dify_provisioning_status = 'pending';
+```
+
+此 SQL 不进 Alembic 迁移(依赖具体部署环境),运维文档里写 SOP。
+
+---
+
+## 6. 测试
+
+| 测试 | 期望 |
+|------|------|
+| `test_alembic_upgrade_adds_columns` | workspaces 表 6 列存在 |
+| `test_alembic_downgrade_removes_columns` | 6 列全部移除 |
+| `test_workspace_signup_idempotency_key_unique` | 重复 key 抛 IntegrityError |
+| `test_audit_log_basic_insert_and_query` | 写入 + 按 tenant_id + created_at 查询 |
+| `test_alembic_works_with_sqlite` | SQLite 跑 upgrade head 通过 |
+| `test_alembic_works_with_postgres` | Postgres 跑 upgrade head 通过(CI) |
+
+### 与 M10+5 兼容性
+
+`Workspace` 模型新增字段都有默认值,不破坏 M10+5 已有的查询路径。
+
+---
+
+## 7. PR2 评审 checklist
+
+- [ ] Alembic upgrade 在 SQLite + Postgres 双跑通过
+- [ ] Alembic downgrade 通过
+- [ ] `models.py` 改动只新增,不修改现有字段
+- [ ] `AuditLog` 模型有完整 type hint
+- [ ] 索引创建正确(SQLite 全表索引、Postgres 部分索引)
+- [ ] bootstrap workspace 手工初始化 SQL 已写进 `docs/operations.md`
+- [ ] 单测覆盖率 ≥ 80%(`backend/tests/m11/test_workspace_provisioning.py`)
