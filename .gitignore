@@ -129,6 +129,8 @@ temp/
 !/docs/operations.md
 !/docs/deploy-pzalo.md
 !/docs/multimodal-quickref.md
+!/docs/m11/
+!/docs/handoffs/
 
 # Local AI/code intelligence caches
 .pi-lens/cache/
