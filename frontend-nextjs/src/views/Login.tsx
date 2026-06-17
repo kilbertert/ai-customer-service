@@ -17,7 +17,7 @@ export const Login = () => {
 	useEffect(() => {
 		setHydrated(true);
 	}, []);
-	const { login } = useAuth();
+	const { login, admin } = useAuth();
 	const navigate = useNavigate();
 
 	useEffect(() => {
@@ -33,6 +33,15 @@ export const Login = () => {
 			.catch(() => setBootstrapRequired(false));
 	}, [navigate]);
 
+	// M11 fix: navigate after auth state flushes, not synchronously after login().
+	// await login() queues setToken/setAdmin (React batches), so navigate("/") called
+	// immediately would race RequireAuth's first render with admin=null → bounce.
+	useEffect(() => {
+		if (admin) {
+			navigate("/", { replace: true });
+		}
+	}, [admin, navigate]);
+
 	const handleLogin = async (e: React.FormEvent) => {
 		e.preventDefault();
 		setError("");
@@ -40,7 +49,7 @@ export const Login = () => {
 
 		try {
 			await login(email, password);
-			navigate("/");
+			// 不要在这里 navigate — 让上面的 useEffect 监听 admin 变化后跳转
 		} catch (err: unknown) {
 			const message =
 				err instanceof Error ? err.message : t("errors.loginFailed");

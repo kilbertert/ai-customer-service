@@ -31,6 +31,7 @@ from database import get_db
 from config import DEFAULT_AGENT_MAX_TOKENS, DEFAULT_AGENT_SIMILARITY_THRESHOLD
 from api.endpoints.auth import (
     get_current_admin,
+    is_workspace_owner,
     require_admin_or_super_admin,
     require_chat_operator,
     require_super_admin,
@@ -335,7 +336,7 @@ async def build_agent_config_with_stats(agent: Agent, db: AsyncSession) -> dict:
 def ensure_agent_access(agent: Agent, current_user: AdminUser):
     if getattr(agent, "deleted_at", None):
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Agent is deleted")
-    if current_user.role == "super_admin":
+    if is_workspace_owner(current_user.role):
         return
     if not any(
         member.admin_user_id == current_user.id
@@ -372,7 +373,7 @@ async def require_agent_for_admin(
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Agent is deleted")
 
     # Workspace super admin: must match workspace, no membership fallback
-    if current_user.role == "super_admin":
+    if is_workspace_owner(current_user.role):
         if not current_user.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -452,7 +453,7 @@ async def require_workspace_super_for_agent(
     if not include_deleted and getattr(agent, "deleted_at", None):
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Agent is deleted")
 
-    if current_user.role != "super_admin":
+    if not is_workspace_owner(current_user.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only workspace super admin can manage agents",
@@ -643,7 +644,10 @@ def enforce_widget_origin_whitelist(
     # Only admin / super_admin may bypass the widget origin whitelist (e.g. for
     # testing via the admin dashboard).  Support and other roles must still pass
     # the whitelist when calling public chat endpoints.
-    if admin_user and admin_user.role in ("super_admin", "admin"):
+    # M11 PR3+: B 端 tenant_owner 也视为自家 workspace admin, 免白名单
+    if admin_user and (
+        is_workspace_owner(admin_user.role) or admin_user.role == "admin"
+    ):
         return
 
     configured_origins = agent.allowed_widget_origins or []
@@ -2035,8 +2039,8 @@ async def list_agents(
     query = select(Agent).where(
         or_(Agent.purge_after.is_(None), Agent.purge_after > datetime.now(timezone.utc))
     )
-    if current_user.role == "super_admin":
-        # Super admin: require workspace_id and filter by workspace
+    if is_workspace_owner(current_user.role):
+        # Workspace owner: require workspace_id and filter by workspace
         if not current_user.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -2700,7 +2704,7 @@ async def get_default_agent(
     query = select(Agent).where(Agent.is_active == True, Agent.deleted_at.is_(None))
 
     # Workspace super admin: require workspace_id, no membership fallback
-    if current_user.role == "super_admin":
+    if is_workspace_owner(current_user.role):
         if not current_user.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -3280,8 +3284,8 @@ async def list_sessions(
     if agent_id:
         await require_agent_for_admin(db, agent_id, current_user)
         query = query.where(ChatSession.agent_id == agent_id)
-    elif current_user.role == "super_admin":
-        # Super admin: require workspace_id and filter by workspace
+    elif is_workspace_owner(current_user.role):
+        # Workspace owner: require workspace_id and filter by workspace
         if not current_user.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

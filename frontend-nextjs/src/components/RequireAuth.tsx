@@ -7,7 +7,10 @@ import { useAuth } from '../context/AuthContext';
 
 // Helper functions for role checking
 function isWorkspaceSuperAdmin(admin: { role: string } | null): boolean {
-    return admin?.role === 'super_admin';
+    // super_admin = basjoo platform admin (cross-tenant)
+    // tenant_owner = B 端租户注册时由 tenant_service.create_admin(role="tenant_owner")
+    //                创建的 workspace 拥有者,语义上等同 super_admin (自家 workspace 全权)
+    return admin?.role === 'super_admin' || admin?.role === 'tenant_owner';
 }
 
 function isAgentScopedUser(admin: { role: string } | null): boolean {

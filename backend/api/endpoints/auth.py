@@ -150,11 +150,20 @@ async def get_current_admin(
     return admin
 
 
-VALID_ADMIN_ROLES = {"super_admin", "admin", "support"}
+VALID_ADMIN_ROLES = {"super_admin", "admin", "support", "tenant_owner"}
+
+# M11 PR3 引入 tenant_owner: B 端注册时由 tenant_service.create_admin(role="tenant_owner")
+# 创建的 workspace 拥有者。语义上等同 super_admin (自家 workspace 全权),只是不能
+# 跨租户访问 (require_tenant_access 仍只放行 super_admin)。
+WORKSPACE_OWNER_ROLES = ("super_admin", "tenant_owner")
+
+
+def is_workspace_owner(role: str) -> bool:
+    return role in WORKSPACE_OWNER_ROLES
 
 
 def require_super_admin(current_admin: AdminUser):
-    if current_admin.role != "super_admin":
+    if not is_workspace_owner(current_admin.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super administrators can manage users",
@@ -164,7 +173,7 @@ def require_super_admin(current_admin: AdminUser):
 async def require_admin_or_super_admin(
     current_admin: AdminUser = Depends(get_current_admin),
 ) -> AdminUser:
-    if current_admin.role not in ("super_admin", "admin"):
+    if current_admin.role not in ("super_admin", "admin", "tenant_owner"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
@@ -175,7 +184,7 @@ async def require_admin_or_super_admin(
 async def require_chat_operator(
     current_admin: AdminUser = Depends(get_current_admin),
 ) -> AdminUser:
-    if current_admin.role not in ("super_admin", "admin", "support"):
+    if current_admin.role not in ("super_admin", "admin", "support", "tenant_owner"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
