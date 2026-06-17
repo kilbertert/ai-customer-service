@@ -152,6 +152,7 @@ init_test.py
 !backend/tests/*_test.py
 !backend/tests/init_test.py
 !backend/tests/legacy/test_*.py
+!backend/tests/m11/test_*.py
 !china_charge_kf/backend/tests/test_*.py
 !china_charge_kf/backend/tests/*_test.py
 !china_charge_kf/backend/tests/init_test.py
@@ -190,21 +191,6 @@ ssl/
 *.cer
 
 .claude/
-
-# === basjoo M11 PR1 — Dify 1.14.2 fork selective tracking =====================
-# /dify/ 和 dify-1.14.2/ 是 Dify 上游源码 (~10k 文件),不入库。
-# 但 basjoo M11 PR1 的 fork 补丁只改 9 个文件,已在 commit 576f4e9 用
-# `git add -f <path>` 强加入库。后续同步 fork 改动也必须用 -f,否则会被本
-# .gitignore 拦下。强加文件清单:
-#   dify-1.14.2/Dockerfile.fork
-#   dify-1.14.2/api/controllers/console/workspace/{error,models,workspace}.py
-#   dify-1.14.2/api/migrations/versions/2026_06_17_basjoo_admin_provision.py
-#   dify-1.14.2/api/models/account.py
-#   dify-1.14.2/api/services/{account_service,admin_provision_schemas}.py
-#   dify-1.14.2/api/tests/test_tenant_provision_by_admin.py
-# 添加新 fork 文件: `git add -f dify-1.14.2/<新文件>` + 更新本注释。
-# 不要 `git add dify-1.14.2/` 或 `git add dify-1.14.2/*` — 会把全 Dify 源码入库。
-# ==============================================================================
 /dify/
 dify-1.14.2/
 .playwright-mcp/
