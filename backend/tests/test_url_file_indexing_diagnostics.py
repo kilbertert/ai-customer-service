@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import select
 
 import database
-from models import Agent, KnowledgeBase, KbDocument, URLSource, Tenant
+from models import Agent, KnowledgeBase, KbDocument, URLSource, Tenant, Workspace
 
 
 @pytest.mark.asyncio
@@ -45,6 +45,7 @@ async def test_url_list_exposes_indexing_error_when_fetch_succeeds_but_processin
             kb = KnowledgeBase(
                 id=new_kb_id,
                 tenant_id=agent.workspace_id,
+                workspace_id=agent.workspace_id,
                 name=f"Agent {default_agent_id} KB",
                 embedding_model="BAAI/bge-m3",
                 qdrant_collection=f"kb_{new_kb_id}",
@@ -140,6 +141,7 @@ async def test_url_list_shows_indexing_status_distinct_from_fetch_status(
             kb = KnowledgeBase(
                 id=new_kb_id,
                 tenant_id=agent.workspace_id,
+                workspace_id=agent.workspace_id,
                 name="Test KB",
                 embedding_model="BAAI/bge-m3",
                 qdrant_collection=f"kb_{new_kb_id}",
@@ -208,7 +210,15 @@ async def test_file_list_exposes_processing_error_message(client, default_agent_
         if not agent.kb_id:
             from services.kb_service import KbService
             kb_svc = KbService(session=session)
-            tenant = Tenant(name="test_tenant", slug="test_tenant")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant",
+                slug="test_tenant",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             kb = await kb_svc.create_knowledge_base(
@@ -292,7 +302,15 @@ async def test_file_list_shows_processing_status(client, default_agent_id):
         if not agent.kb_id:
             from services.kb_service import KbService
             kb_svc = KbService(session=session)
-            tenant = Tenant(name="test_tenant2", slug="test_tenant2")
+            ws_result = await session.execute(
+                select(Workspace).order_by(Workspace.id).limit(1)
+            )
+            workspace = ws_result.scalar_one()
+            tenant = Tenant(
+                name="test_tenant2",
+                slug="test_tenant2",
+                workspace_id=workspace.id,
+            )
             session.add(tenant)
             await session.flush()
             kb = await kb_svc.create_knowledge_base(

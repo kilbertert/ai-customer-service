@@ -37,7 +37,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"  # host 5433 → container 5432 (avoid host PG port conflict, 2026-06-14)
     restart: unless-stopped
     networks:
       - basjoo-network
@@ -253,7 +253,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: basjoo-frontend-dev
     ports:
-      - "3000:3000"
+      - "3001:3000"  # host 3001 → container 3000 (avoid host port 3000 conflict with NeteaseCloudMusicApi, 2026-06-14)
     environment:
       - NEXT_PUBLIC_API_BASE_URL=
       - NEXT_PUBLIC_WS_BASE_URL=
@@ -307,6 +307,65 @@ services:
     networks:
       - basjoo-network
 
+  # ============================================
+  # Dify 平台服务 (M10+5 opt-in, 沙箱不默认起)
+  # 启动: docker compose --profile dify up -d
+  # 镜像 ~3GB, 拉取慢 — 生产建议独立 docker-compose 部署 Dify
+  # ============================================
+  dify:
+    image: langgenius/dify-api:1.14.2
+    container_name: basjoo-dify
+    profiles: ["dify"]   # 显式 opt-in, 不进 dev/prod 默认起
+    ports:
+      - "8501:5001"  # host 8501 → container 5001 (Dify API default), 跟沙箱真 Dify 端口对齐
+    environment:
+      # 复用本仓 postgres (独立 database: dify)
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=dify
+      # 复用本仓 redis (DB 1, 跟 basjoo 0 隔离)
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=1
+      # 复用本仓 qdrant 作 vector DB (Dify 1.14.2 支持 qdrant)
+      - VECTOR_STORE=qdrant
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=
+      # 初次启动跑 migrations
+      - MIGRATION_ENABLED=true
+      # URLs (跟 basjoo 同源, 反代通过 nginx)
+      - CONSOLE_API_URL=http://localhost:8501
+      - CONSOLE_WEB_URL=http://localhost:8501
+      - SERVICE_API_URL=http://localhost:8501/v1
+      - APP_API_URL=http://localhost:8501/v1
+      # Secret — 部署时通过 .env 注入
+      - SECRET_KEY=${DIFY_SECRET_KEY:-dify-dev-secret-change-me}
+      # Storage (本地)
+      - STORAGE_TYPE=local
+      - STORAGE_LOCAL_PATH=/app/api/storage
+    volumes:
+      - dify-data:/app/api/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - basjoo-network
+    healthcheck:
+      # Dify 1.14.2 setup endpoint 未登录返 401 = healthy
+      test: ["CMD", "curl", "-f", "http://localhost:5001/console/api/setup"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 networks:
   basjoo-network:
     driver: bridge
@@ -316,3 +375,4 @@ volumes:
   postgres-data:
   backend-data:
   qdrant-data:
+  dify-data:

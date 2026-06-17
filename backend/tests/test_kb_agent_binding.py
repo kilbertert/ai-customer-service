@@ -83,13 +83,23 @@ async def test_agent_kb_binding_is_tenant_isolated(setup_test_db):
 async def test_agent_with_existing_kb_returns_existing(setup_test_db):
     """If agent already has a KB bound, return it instead of creating new."""
     async with database.AsyncSessionLocal() as session:
+        # Get default workspace (M10 G2: Tenant now requires workspace_id)
+        ws_result = await session.execute(
+            select(Workspace).order_by(Workspace.id).limit(1)
+        )
+        workspace = ws_result.scalar_one()
         # Create tenant and KB first
-        tenant = Tenant(name="Existing Tenant", slug="existing-tenant")
+        tenant = Tenant(
+            name="Existing Tenant",
+            slug="existing-tenant",
+            workspace_id=workspace.id,
+        )
         session.add(tenant)
         await session.flush()
 
         kb = KnowledgeBase(
             tenant_id=tenant.id,
+            workspace_id=workspace.id,
             name="Existing KB",
             qdrant_collection="kb_existing_test",
         )
@@ -250,13 +260,23 @@ async def test_kb_setup_endpoint_returns_existing_kb_if_already_bound(
 ):
     """KB setup endpoint should return existing KB if agent already has kb_id."""
     async with database.AsyncSessionLocal() as session:
+        # Get default workspace (M10 G2: Tenant now requires workspace_id)
+        ws_result = await session.execute(
+            select(Workspace).order_by(Workspace.id).limit(1)
+        )
+        workspace = ws_result.scalar_one()
         # Create tenant and KB first
-        tenant = Tenant(name="Existing Tenant", slug="existing-tenant")
+        tenant = Tenant(
+            name="Existing Tenant",
+            slug="existing-tenant",
+            workspace_id=workspace.id,
+        )
         session.add(tenant)
         await session.flush()
 
         kb = KnowledgeBase(
             tenant_id=tenant.id,
+            workspace_id=workspace.id,
             name="Existing KB",
             qdrant_collection="kb_existing_test",
         )
@@ -297,13 +317,23 @@ async def test_kb_setup_reconciles_stale_kb_binding(client, default_agent_id):
     causing subsequent kb_setup to return success without actually completing setup.
     """
     async with database.AsyncSessionLocal() as session:
+        # Get default workspace (M10 G2: Tenant now requires workspace_id)
+        ws_result = await session.execute(
+            select(Workspace).order_by(Workspace.id).limit(1)
+        )
+        workspace = ws_result.scalar_one()
         # Create tenant and KB first
-        tenant = Tenant(name="Stale Test Tenant", slug="stale-test-tenant")
+        tenant = Tenant(
+            name="Stale Test Tenant",
+            slug="stale-test-tenant",
+            workspace_id=workspace.id,
+        )
         session.add(tenant)
         await session.flush()
 
         kb = KnowledgeBase(
             tenant_id=tenant.id,
+            workspace_id=workspace.id,
             name="Stale Test KB",
             qdrant_collection="kb_stale_test",
         )

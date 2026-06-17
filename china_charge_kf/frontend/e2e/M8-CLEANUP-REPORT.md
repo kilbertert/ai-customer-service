@@ -237,12 +237,12 @@ b4b4740 docs(backend): M8.4 — add DIFY section to .env.example incl. DIFY_V2_A
 
 ---
 
-## 7. 下一步建议
+## 7. M9 进展回填 (2026-06-13)
 
-- **M9 候选**: 真 Dify 链路 e2e(M8.0 的 `@real-dify` T7,目前 skip)
-- **M9 候选**: backend 的 `_dig_first_text` 在 app_dify/ 还有遗留 helper,
-  考虑也搬进 `extract_output_text` 主路径,删 fallback 分支
-- **M9 候选**: i18n 检查 `(no response)` 和 `(stopped)` 在 zh/en/vi 都有翻译
+- ✅ **M9 候选 #1 (真 Dify e2e)**:M9 阶段通过 Playwright MCP 跑了 T7 `@real-dify` 探针(基线 短查 27 fires / 长查 104 fires,见 `M9-PROMPT.md` §1.5),并新增 `specs/07-think-streaming.spec.ts` 永久守门
+- ⏭️ **M9 候选 #2 (`_dig_first_text` 整合)**:M9 范围之外,**未做**,留作 M9.x / M10+ 候选
+- ✅ **M9 候选 #3 (i18n 完整性)**:M8.1 阶段已 audit 通过(`(no response)` 和 `(stopped)` 在 zh/en/vi 齐全)
+- 详见 `frontend/e2e/M9-REPORT.md`
 
 ---
 

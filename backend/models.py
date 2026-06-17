@@ -53,12 +53,39 @@ class Workspace(Base):
     owner_email = Column(String(255), unique=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # M10 G3: Dify 集成层字段(同时支持 Plan A / Plan B 拓扑)
+    # NULL dify_api_key = Plan B (共享 Dify workspace + 共享 API key)
+    # 非空 dify_api_key = Plan A (本 workspace 独占 Dify workspace)
+    dify_api_base = Column(String(255), nullable=True)
+    dify_api_key = Column(Text, nullable=True)  # Fernet 加密,见 core/encryption.py
+    dify_workspace_id = Column(String(64), nullable=True)  # Dify 端 workspace UUID
+    dify_enabled = Column(Boolean, nullable=False, default=False)  # 总开关
+
+    # M10+2 D4.1: Dify admin 凭据 (workspace service account)
+    # dify_enabled=True 时必须 2 个都非空,否则 endpoint fail-fast 400
+    # dify_admin_email: 明文 (Dify admin 用 email 登录, 非密钥无需加密)
+    # dify_admin_password_ref: Fernet 加密 (解密切 core.encryption.decrypt_api_key)
+    # DifyAdminClient.from_workspace 用这 2 个字段构造生产侧管理 API 客户端
+    dify_admin_email = Column(String(255), nullable=True)
+    dify_admin_password_ref = Column(Text, nullable=True)  # Fernet 加密
+
     # 关系
     agents = relationship(
         "Agent", back_populates="workspace", cascade="all, delete-orphan"
     )
     quotas = relationship("WorkspaceQuota", back_populates="workspace", uselist=False)
     admin_users = relationship("AdminUser", back_populates="workspace")
+    # M10 G2: Tenant ↔ Workspace 1:1 (Tenant.plan 字段保留为 M11+ 占位,本 M10 不实现)
+    tenant = relationship(
+        "Tenant",
+        back_populates="workspace",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    # M10 G2: 直接 FK 到 workspace 的 KB(避免 JOIN tenants)
+    knowledge_bases = relationship(
+        "KnowledgeBase", back_populates="workspace", cascade="all, delete-orphan"
+    )
 
 
 class Agent(Base):
@@ -208,6 +235,26 @@ class Agent(Base):
     kb_id = Column(
         String(36), ForeignKey("knowledge_bases.id"), nullable=True, index=True
     )
+
+    # M10 G3: Dify 集成层 per-agent 字段
+    dify_workflow_id = Column(String(64), nullable=True)  # 1 agent = 1 workflow
+    # M10 G1: end_user 编码策略 (双层 agent-{aid}-v-{vid}-s-{sid})
+    dify_user_prefix = Column(String(20), nullable=False, default="agent-")
+    dify_inputs_schema = Column(JSON, nullable=True)  # G1 schema 描述(可选)
+    dify_end_user_strategy = Column(
+        String(20), nullable=False, default="dual_layer"
+    )  # dual_layer | legacy
+    # M10+1 D7: Dify App UUID (workflow 是 App 下属资源, 多 1 个外键便于回查)
+    dify_app_id = Column(String(64), nullable=True)
+    # M10+1 D8: per-agent runtime API key (Fernet 加密存储, 解密见 core.encryption)
+    # 来源: Dify POST /console/api/apps/{id}/api-keys 返回的 "app-xxx..." token
+    dify_api_key = Column(Text, nullable=True)
+    # M10+1 D9(c): workflow publish 状态字段
+    # 枚举: 'draft' (未 publish) | 'published' (publish 成功) | 'publish_failed' (Dify 校验失败/空 graph 等)
+    dify_publish_status = Column(
+        String(32), nullable=False, default="draft", server_default="draft"
+    )
+    dify_publish_error = Column(Text, nullable=True)  # publish 失败时的错误信息
 
     # 关系
     workspace = relationship("Workspace", back_populates="agents")
@@ -532,28 +579,54 @@ class AdminUser(Base):
 
 
 class Tenant(Base):
-    """租户表（多租户顶层）"""
+    """Workspace 的计费/订阅 profile 壳 (M10 G2 起)。
+
+    1:1 绑定到一个 Workspace (Tenant.workspace_id UNIQUE)。`plan` /
+    `billing_email` 字段保留为 M11+ 计费功能占位,本 M10 不实现,代码库内 0 引用。
+    """
 
     __tablename__ = "tenants"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String(100), nullable=False)
+    # M10 G2: 1:1 Workspace (per M10-PROMPT.md §3.2 option B)
+    workspace_id = Column(
+        Integer,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    name = Column(String(100), nullable=False)  # 冗余 workspace.name 便于查询
     slug = Column(String(50), unique=True, nullable=False, index=True)
-    plan = Column(String(20), nullable=False, default="free")
+    plan = Column(String(20), nullable=False, default="free")  # M11+ 占位
+    billing_email = Column(String(255), nullable=True)  # M11+ 占位
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    workspace = relationship("Workspace", back_populates="tenant")
     knowledge_bases = relationship(
         "KnowledgeBase", back_populates="tenant", cascade="all, delete-orphan"
     )
 
 
 class KnowledgeBase(Base):
-    """知识库表（每 agent 独立 KB）"""
+    """Workspace 级知识库 (M10 G2 后,不再 per-agent)。
+
+    tenant_id 字段保留(向后兼容旧数据),但语义改为"workspace 的计费壳";
+    新增 workspace_id 直接 FK 避免穿透 tenant。
+    """
 
     __tablename__ = "knowledge_bases"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    # M10 G2: 直接 FK 到 workspace,避免总是要 JOIN tenants 表
+    workspace_id = Column(
+        Integer,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name = Column(String(100), nullable=False)
     embedding_model = Column(String(100), nullable=False, default="BAAI/bge-m3")
     embedding_base_url = Column(String(500), nullable=True)
@@ -580,6 +653,7 @@ class KnowledgeBase(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant", back_populates="knowledge_bases")
+    workspace = relationship("Workspace", back_populates="knowledge_bases")
     documents = relationship(
         "KbDocument", back_populates="knowledge_base", cascade="all, delete-orphan"
     )

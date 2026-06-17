@@ -20,6 +20,27 @@ H5 智能客服 — a browser-based customer service chat application with text,
 - 契约文档：`docs/api-contract-dify.md` §4.2.1 (PR9 U1–U10) + §4.2 (PR10 file-list)
 - 错误映射：`docs/sse-event-mapping.md` §6.5.1/§6.5.2 (PR8)
 
+### M9 状态 (2026-06-13) — stream-level `<think>` 剥离器
+
+- `frontend/src/services/difyStream.ts` 新增 `createThinkStripper()`:跨 chunk 缓冲 + drain() state machine,把流式 `<think>` 推理挡在 `message_delta` 之外
+- 11 个新 vitest(`difyStream.test.ts` 53 总数,全套 69) + M9.4 e2e spec `specs/07-think-streaming.spec.ts` 永久守门(`page.on('console')` 抓 `[M9-HARD-GATE]` fires)
+- 退役:`App.tsx` 原 dev-only `[M9-HARD-GATE]` useEffect(M9-PROMPT §11 选项 b,e2e spec 接管)
+- 验收:CONDITIONAL PASS(5 轮 T7 `@real-dify` 硬门 regression 待用户本机实跑,Σ fires 必须 = 0 升级无条件 PASS)
+- 报告:`frontend/e2e/M9-REPORT.md`
+- 后续:`M8-CLEANUP-REPORT.md` §7 候选 #2(`_dig_first_text` 整合)未做,留 M9.x / M10+
+
+### M10 状态 (2026-06-15) — 5 Gap 修复 + basjoo 仓物理合并
+
+- 任务书:`china_charge_kf/M10-PROMPT.md`(M10 全部 SSoT,untracked — 待 M14 决定是否移到 basjoo)
+- 9 个 sub-PR 落地(8 commit + 1 amend,基线 `19cfda2` → HEAD `f2a1eb0`):
+  - PR1 G2 Tenant↔Workspace 1:1(`0aa8792`)+ PR2-1/2-2/2-3 G3 schema/Fernet(`6431b97`/`f33cc2d`)+ PR2-4 G5 #5/#6(`e178035`)
+  - PR3a G4 backend 物理搬运(`475246c`)+ PR3b G4 frontend 物理搬运(`fc7bc4a`)+ PR3 frozen 标记(`8065f62`)
+  - PR4a G1 dual-layer end_user 编码(`c3b14be`)+ PR4b streaming think strip(`828cd7e`)+ PR4c E2E + report amend(`f2a1eb0`)
+- 本目录已 **FROZEN-DEPRECATED**(详见 `china_charge_kf/M10-FROZEN-README.md`),Dify 协议层代码全在 basjoo 仓
+- 验收: **CONDITIONAL PASS**(165/165 backend pytest + 180/180 frontend vitest + 1/1 basjoo DifyClient 真 Dify round-trip;5/5 china_charge_kf H5 widget M9 baseline 维持;缺口 = basjoo `/api/v1/chat/stream` 真 Dify 流式 E2E 待本机/CI 补跑,清单见 `china_charge_kf/M10-REPORT.md` §8)
+- 报告:`china_charge_kf/M10-REPORT.md`(168 行,含基线阻断分析 + 7 步本机补跑清单)
+- M10+ follow-up: ① basjoo H5 widget → chat_stream → DifyProvider → 真 Dify 3 轮 E2E ② admin UI 配 workflow_id(production DB 0 rows) ③ frontend `useDifyStream:true` 触发 ④ `china_charge_kf/M10-PROMPT.md` 移到 basjoo 仓决策
+
 ## Dev Commands
 
 ### Frontend

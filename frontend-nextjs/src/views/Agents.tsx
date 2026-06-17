@@ -5,7 +5,14 @@ import { useNavigate } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import KBSetupWizard from "../components/KBSetupWizard";
 import { useAgentKbStatus } from "../hooks/useAgentKbStatus";
-import { Agent, AgentCreateInput, AgentType, api } from "../services/api";
+import { useWorkspaceConfig } from "../hooks/useWorkspaceConfig";
+import {
+	Agent,
+	AgentCreateInput,
+	AgentType,
+	WorkflowMode,
+	api,
+} from "../services/api";
 import { useTranslation } from "react-i18next";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
@@ -74,15 +81,34 @@ export default function Agents() {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [, setCountdownTick] = useState(0);
+	// M10+3 — Form state extended with workflow_mode + icon_emoji hints.
+	// workflow_mode is a per-agent hint for Dify app/workflow creation (D3
+	// locked: "blank" until M11+ ships a real DSL template). icon_emoji is
+	// reserved for the Dify app icon. Both are passthrough to backend
+	// (M10+2 endpoint currently ignores them — see M10+3 §7.A spec).
 	const [form, setForm] = useState<AgentCreateInput>({
 		name: "",
 		description: "",
 		agent_type: "website_support",
 		channel_mode: "web_widget",
+		workflow_mode: "blank",
+		icon_emoji: "🤖",
 	});
+	// M10+3 — Dify hint state. When dify_enabled and a new agent is created
+	// with a dify_app_id, show the "go configure graph in Dify Studio" hint
+	// instead of (or in addition to) the KB setup wizard.
+	const [difyHint, setDifyHint] = useState<{
+		agentId: string;
+		publishStatus: string;
+		difyAppId: string | null;
+		difyApiBase: string | null;
+	} | null>(null);
 	const [onboardingAgentId, setOnboardingAgentId] = useState<string | null>(
 		null,
 	);
+	// M10+3 §7.D — gate Dify-specific UI on workspace.dify_enabled.
+	const { dify_enabled: difyEnabled, dify_api_base: difyApiBase } =
+		useWorkspaceConfig();
 	const { recheck: recheckOnboardingKbStatus } =
 		useAgentKbStatus(onboardingAgentId);
 	const selectedAgent = useMemo(
@@ -163,8 +189,23 @@ export default function Agents() {
 				description: "",
 				agent_type: "website_support",
 				channel_mode: "web_widget",
+				workflow_mode: "blank",
+				icon_emoji: "🤖",
 			});
-			setOnboardingAgentId(created.id);
+			// M10+3 §7.A — branching on dify_enabled:
+			//   - dify_enabled + dify_app_id present → show "go configure in
+			//     Dify Studio" hint, skip KB wizard (D6=a 最小化).
+			//   - otherwise → keep legacy KBSetupWizard flow (Plan B compat).
+			if (difyEnabled && created.dify_app_id) {
+				setDifyHint({
+					agentId: created.id,
+					publishStatus: created.dify_publish_status ?? "draft",
+					difyAppId: created.dify_app_id,
+					difyApiBase: difyApiBase,
+				});
+			} else {
+				setOnboardingAgentId(created.id);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : t("errors.networkError"));
 		} finally {
@@ -659,6 +700,88 @@ export default function Agents() {
 								max: AGENT_DESCRIPTION_MAX_LENGTH,
 							})}
 						</div>
+						{/* M10+3 §7.A — Dify workflow + icon fields, gated on
+						    workspace.dify_enabled. Hidden entirely for Plan B
+						    workspaces (dify_enabled=false). */}
+						{difyEnabled && (
+							<div
+								data-testid="dify-form-section"
+								style={{
+									marginBottom: "var(--space-4)",
+									padding: "var(--space-3)",
+									borderRadius: "var(--radius-md)",
+									border: "1px dashed var(--color-border)",
+									background: "var(--color-bg-secondary)",
+								}}
+							>
+								<label
+									style={{
+										display: "block",
+										color: "var(--color-text-secondary)",
+										fontSize: "var(--text-sm)",
+										marginBottom: "var(--space-2)",
+									}}
+								>
+									{t("agents.difyWorkflowMode")}
+								</label>
+								<select
+									data-testid="dify-workflow-mode"
+									value={form.workflow_mode ?? "blank"}
+									onChange={(event) =>
+										setForm((prev) => ({
+											...prev,
+											workflow_mode: event.target.value as WorkflowMode,
+										}))
+									}
+									style={{
+										width: "100%",
+										marginBottom: "var(--space-3)",
+										padding: "var(--space-3)",
+										borderRadius: "var(--radius-md)",
+										border: "1px solid var(--color-border)",
+										background: "var(--color-bg-primary)",
+										color: "var(--color-text-primary)",
+									}}
+								>
+									<option value="blank">
+										{t("agents.difyWorkflowModeBlank")}
+									</option>
+									<option value="template_v1">
+										{t("agents.difyWorkflowModeTemplate")}
+									</option>
+								</select>
+								<label
+									style={{
+										display: "block",
+										color: "var(--color-text-secondary)",
+										fontSize: "var(--text-sm)",
+										marginBottom: "var(--space-2)",
+									}}
+								>
+									{t("agents.difyIconEmoji")}
+								</label>
+								<input
+									data-testid="dify-icon-emoji"
+									type="text"
+									value={form.icon_emoji ?? ""}
+									maxLength={4}
+									onChange={(event) =>
+										setForm((prev) => ({
+											...prev,
+											icon_emoji: event.target.value.slice(0, 4),
+										}))
+									}
+									style={{
+										width: "100%",
+										padding: "var(--space-3)",
+										borderRadius: "var(--radius-md)",
+										border: "1px solid var(--color-border)",
+										background: "var(--color-bg-primary)",
+										color: "var(--color-text-primary)",
+									}}
+								/>
+							</div>
+						)}
 						<button
 							type="submit"
 							disabled={
@@ -716,6 +839,105 @@ export default function Agents() {
 							onCancel={finishCreatedAgentOnboarding}
 							onSetupComplete={finishCreatedAgentOnboarding}
 						/>
+					</div>
+				</div>
+			)}
+			{/* M10+3 §7.A — Dify hint modal. Shown when dify_enabled and a new
+			    agent was created with a dify_app_id. Directs the admin to
+			    Dify Studio to add nodes + publish the workflow. */}
+			{difyHint && (
+				<div
+					data-testid="dify-hint-modal"
+					style={{
+						position: "fixed",
+						inset: 0,
+						zIndex: 9999,
+						background: "rgba(0,0,0,0.55)",
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						padding: "var(--space-4)",
+					}}
+					role="dialog"
+					aria-modal="true"
+					aria-label={t("agents.difyHintTitle")}
+				>
+					<div
+						className="liquid-glass-card"
+						style={{
+							maxWidth: 520,
+							width: "100%",
+							padding: "var(--space-5)",
+							color: "var(--color-text-primary)",
+						}}
+					>
+						<h2
+							style={{
+								fontSize: "var(--text-xl)",
+								marginBottom: "var(--space-3)",
+							}}
+						>
+							{t("agents.difyHintTitle")}
+						</h2>
+						<p
+							style={{
+								marginBottom: "var(--space-4)",
+								color: "var(--color-text-secondary)",
+							}}
+						>
+							{t("agents.difyHintBody", {
+								status: difyHint.publishStatus,
+							})}
+						</p>
+						<div
+							style={{
+								display: "flex",
+								gap: "var(--space-3)",
+								justifyContent: "flex-end",
+							}}
+						>
+							{difyHint.difyAppId && difyHint.difyApiBase && (
+								<a
+									data-testid="dify-open-studio-link"
+									href={`${difyHint.difyApiBase.replace(
+										/\/+$/,
+										"",
+									)}/app/${difyHint.difyAppId}/workflow`}
+									target="_blank"
+									rel="noopener noreferrer"
+									style={{
+										padding: "var(--space-2) var(--space-4)",
+										borderRadius: "var(--radius-md)",
+										background: "var(--color-accent-primary)",
+										color: "var(--color-text-inverse)",
+										fontWeight: 600,
+										textDecoration: "none",
+									}}
+								>
+									{t("agents.difyHintOpenStudio")} ↗
+								</a>
+							)}
+							<button
+								type="button"
+								data-testid="dify-hint-close"
+								onClick={() => {
+									const agentId = difyHint.agentId;
+									setDifyHint(null);
+									api.setSelectedAgentId(agentId);
+									navigate(`/agents/${agentId}/dashboard`);
+								}}
+								style={{
+									padding: "var(--space-2) var(--space-4)",
+									borderRadius: "var(--radius-md)",
+									border: "1px solid var(--color-border)",
+									background: "var(--color-bg-secondary)",
+									color: "var(--color-text-primary)",
+									cursor: "pointer",
+								}}
+							>
+								{t("common.close") ?? "Close"}
+							</button>
+						</div>
 					</div>
 				</div>
 			)}

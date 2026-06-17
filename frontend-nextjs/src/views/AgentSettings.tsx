@@ -14,6 +14,8 @@ import {
   resolveWidgetScriptBaseUrl,
 } from '../lib/widgetEmbedCode';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useWorkspaceConfig } from '../hooks/useWorkspaceConfig';
+import { DifyStatusBadge } from './DifyStatusBadge';
 
 interface AgentSettingsFormData {
   widget_title: string;
@@ -44,6 +46,9 @@ export default function AgentSettings() {
   const { t } = useTranslation('common');
   const { agentId: routeAgentId } = useParams<{ agentId?: string }>();
   const isMobile = useIsMobile();
+  // M10+3 §7.D — gate Dify UI on workspace.dify_enabled.
+  const { dify_enabled: difyEnabled, dify_api_base: difyApiBase } =
+    useWorkspaceConfig();
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [formData, setFormData] = useState<AgentSettingsFormData | null>(null);
@@ -177,6 +182,57 @@ export default function AgentSettings() {
             fontSize: 'var(--text-sm)',
           }}>
             {validationError}
+          </div>
+        )}
+
+        {/* M10+3 §7.C — Dify integration section. Rendered above the widget
+            config card, gated on workspace.dify_enabled (Plan B workspaces
+            see no Dify section at all). The badge itself is hidden when the
+            agent has no dify_workflow_id (legacy / non-Dify agent). */}
+        {difyEnabled && agent && (
+          <div
+            data-testid="dify-section"
+            className="liquid-glass-card"
+            style={{
+              padding: isMobile ? 'var(--space-4)' : 'var(--space-5)',
+              marginBottom: 'var(--space-6)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-3)',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-3)',
+            }}>
+              <h2 style={{
+                fontSize: 'var(--text-lg)',
+                fontWeight: 600,
+                color: 'var(--color-text-primary)',
+                margin: 0,
+              }}>
+                {t('agents.difySectionTitle')}
+              </h2>
+              <DifyStatusBadge agent={agent} />
+            </div>
+            {agent.dify_app_id && difyApiBase && (
+              <a
+                data-testid="dify-open-studio-link"
+                href={`${difyApiBase.replace(/\/+$/, '')}/app/${agent.dify_app_id}/workflow`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--color-accent-primary)',
+                  textDecoration: 'none',
+                  fontWeight: 500,
+                }}
+              >
+                {t('agents.difyOpenStudio')}
+              </a>
+            )}
           </div>
         )}
 

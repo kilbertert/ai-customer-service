@@ -2,6 +2,12 @@
  * API Service for v1 Endpoints
  */
 import { API_BASE_URL } from "../lib/env";
+// M10 PR4b — Dify stream path delegation. api.ts streamChat routes to the
+// existing difyStream.ts consumer (think-stripping, sticky buffer, error
+// normalization) when the caller opts in via `options.useDifyStream`. LLM
+// path is unchanged.
+import { streamChat as difyStreamChat } from "./difyStream";
+import type { DifyStreamEvent } from "./difyStream";
 
 export interface ChatRequest {
 	agent_id: string;
@@ -66,6 +72,25 @@ export type AgentType =
 	| "sales_outreach"
 	| "custom";
 export type AgentChannelMode = "web_widget" | "whatsapp" | "email" | "custom";
+
+// M10+3 — Dify workflow mode for create_agent input. Only meaningful when
+// workspace.dify_enabled=true. "blank" creates a workflow with no nodes
+// (admin configures graph in Dify Studio); "template_v1" is reserved for
+// M11+ when a real DSL template ships.
+export type WorkflowMode = "blank" | "template_v1";
+
+// M10+3 — Dify workflow publish status returned by backend. Mirrors the
+// `agent.dify_publish_status` column in models.py (D9c tolerant contract).
+export type DifyPublishStatus = "draft" | "published" | "publish_failed";
+
+// M10+3 — Workspace config exposed via GET /api/v1/workspace/config so the
+// frontend can gate Dify-specific UI (workflow form fields, publish badge,
+// "Open in Dify Studio" link) on the workspace toggle.
+export interface WorkspaceConfig {
+	dify_enabled: boolean;
+	dify_api_base: string | null;
+	dify_admin_configured: boolean;
+}
 
 export interface Agent {
 	id: string;
@@ -132,6 +157,13 @@ export interface Agent {
 	active_session_count?: number;
 	created_at: string;
 	updated_at?: string;
+	// M10+3 — Dify integration fields (M10+1/M10+2 backend, surfaced to UI).
+	// All nullable because legacy agents (created before M10 G3) and Plan B
+	// (dify_enabled=false) workspaces will have these as null / "draft".
+	dify_app_id?: string | null;
+	dify_workflow_id?: string | null;
+	dify_publish_status?: DifyPublishStatus;
+	dify_publish_error?: string | null;
 }
 
 export interface AgentMember {
@@ -215,6 +247,11 @@ export interface AgentCreateInput {
 	persona_type?: string;
 	widget_title?: string;
 	welcome_message?: string;
+	// M10+3 — Dify workflow creation hints. Backend (M10+2) currently does not
+	// consume these (D6=a minimum-scope), but the frontend passes them through
+	// so the API contract is in place for M11+ DSL template wiring.
+	workflow_mode?: WorkflowMode;
+	icon_emoji?: string;
 }
 
 export async function parseErrorResponse(response: Response): Promise<string> {
@@ -380,8 +417,20 @@ class APIService {
 		},
 		options?: {
 			signal?: AbortSignal;
+			// M10 PR4b — when true, delegate to difyStream.ts consumer instead of
+			// the inline LLM parser. The Dify path uses the SAME backend endpoint
+			// (`/api/v1/chat/stream`); basjoo PR4a wired the chat_stream endpoint
+			// to dual-source Dify/LLM. difyStream.ts handles think-stripping,
+			// sticky SSE buffer, and Dify error normalization.
+			useDifyStream?: boolean;
 		},
 	): Promise<void> {
+		// M10 PR4b — Dify path delegation. LLM path below is unchanged.
+		if (options?.useDifyStream) {
+			await this.streamChatDify(request, callbacks, options.signal);
+			return;
+		}
+
 		const chatRequest = {
 			...request,
 			locale: request.locale || this.getLocale(),
@@ -542,9 +591,95 @@ class APIService {
 		}
 	}
 
+	// M10 PR4b — Dify stream path delegation. Thin wrapper around difyStream.ts
+	// consumer that translates DifyStreamEvent → LLM-callback contract
+	// (onContent / onDone / onError). session_id from session_started is
+	// captured in closure so message_complete's onDone can populate StreamDoneMeta.
+	// No `onSources` / `onThinking` / `onThinkingDone` firings — Dify path
+	// doesn't emit those event types.
+	private async streamChatDify(
+		request: ChatRequest,
+		callbacks: {
+			onContent: (chunk: string) => void;
+			onDone: (meta: StreamDoneMeta) => void;
+			onError: (error: string) => void;
+		},
+		signal?: AbortSignal,
+	): Promise<void> {
+		const token = localStorage.getItem("token");
+		const headers: Record<string, string> = {};
+		if (token) {
+			headers.Authorization = `Bearer ${token}`;
+		}
+		const streamBaseUrl = this.getStreamBaseUrl();
+		let sessionId: string | undefined;
+
+		try {
+			for await (const event of difyStreamChat({
+				text: request.message,
+				file_ids: [],
+				language: request.locale,
+				end_user: undefined,
+				apiBase: streamBaseUrl,
+				endpoint: "/api/v1/chat/stream",
+				headers,
+				signal,
+			})) {
+				switch (event.type) {
+					case "session_started":
+						sessionId = event.session_id || undefined;
+						break;
+					case "message_delta":
+						if (event.text) {
+							callbacks.onContent(event.text);
+						}
+						break;
+					case "message_complete":
+						callbacks.onDone({
+							message_id: null,
+							session_id: sessionId,
+							usage:
+								event.total_tokens > 0
+									? {
+											prompt_tokens: 0,
+											completion_tokens: event.total_tokens,
+											total_tokens: event.total_tokens,
+										}
+									: null,
+							taken_over: false,
+						});
+						break;
+					case "error":
+						callbacks.onError(event.message || "Dify stream error");
+						break;
+					case "end":
+						// Stream terminator — no callback needed.
+						break;
+				}
+			}
+		} catch (e) {
+			// difyStreamChat throws DifyStreamError on network/HTTP/parse failures
+			// (per difyStream.test.ts contract). Surface its message; never
+			// re-throw — caller (Playground) expects Promise<void> with errors
+			// delivered via onError.
+			if (e instanceof Error) {
+				callbacks.onError(e.message);
+			} else {
+				callbacks.onError("Dify stream failed");
+			}
+		}
+	}
+
 	// Agent APIs
 	async listAgents(): Promise<{ agents: Agent[]; total: number }> {
 		return this.request<{ agents: Agent[]; total: number }>("/api/v1/agents");
+	}
+
+	// M10+3 — Workspace config (read-only). Powers `useWorkspaceConfig` hook
+	// to gate Dify-specific UI (workflow form fields, publish badge, "Open
+	// in Dify Studio" link) on workspace.dify_enabled.
+	async getWorkspaceConfig(): Promise<WorkspaceConfig> {
+		return this.request<WorkspaceConfig>("/api/v1/workspace/config");
 	}
 
 	async createAgent(input: AgentCreateInput): Promise<Agent> {

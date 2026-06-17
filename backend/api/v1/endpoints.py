@@ -13,6 +13,7 @@ from fastapi import (
     BackgroundTasks,
 )
 from fastapi.responses import StreamingResponse
+import httpx
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, delete, or_
@@ -83,6 +84,7 @@ from api.v1.schemas import (
     SourcesFileSummary,
     SessionListItem,
     SessionListResponse,
+    WorkspaceConfigResponse,
     normalize_widget_origin,
 )
 from services import URLNormalizer, TaskType, task_lock
@@ -103,6 +105,12 @@ from services.llm_service import get_llm_service
 from services.auth_service import AuthService
 from services.kb_retrieval_service import KbRetrievalService
 from services.kb_service import KbService
+from services.dify.admin_client import DifyAdminClient
+from services.dify.exceptions import (
+    DifyAuthError,
+    DifyConfigError,
+    DifyUpstreamError,
+)
 from middleware import get_request_client_ip
 from api.v1.sse_utils import sse_event
 from config import settings
@@ -1506,6 +1514,23 @@ async def chat_stream(
                 _agent = chat_context["agent"]
                 _restricted_reply = _agent.restricted_reply
 
+                # M10 PR4a: Dify 集成检测 — 加载 workspace,准备 DifyProvider
+                # 仅当 agent.dify_workflow_id 非空时才走 Dify 路径,否则保持原 LLM 路由
+                _dify_workflow_id = (_agent.dify_workflow_id or "").strip()
+                _session_visitor_id = session.visitor_id
+                _workspace_obj = None
+                if _dify_workflow_id:
+                    ws_q = await prep_db.execute(
+                        select(Workspace).where(Workspace.id == workspace_id)
+                    )
+                    _workspace_obj = ws_q.scalar_one_or_none()
+                    if _workspace_obj is None:
+                        logger.warning(
+                            "chat_stream: agent %s has dify_workflow_id but workspace %s not found",
+                            _agent.id,
+                            workspace_id,
+                        )
+
                 logger.info(
                     "chat_stream prepare done agent_id=%s session_id=%s prepare_ms=%.1f",
                     request.agent_id,
@@ -1525,115 +1550,227 @@ async def chat_stream(
                 return
             # prep_db closes here, releasing the connection
 
-        # Phase 2: LLM streaming without DB connection
-        yield sse_event("sources", {"sources": sources})
-
-        reply_parts = []
+        # Phase 2: streaming — LLM or Dify path per agent.dify_workflow_id
+        # M10 §2 / §7 PR4a: Dify 路径透传 SseProxyLayer 字节,G1 end_user 编码在
+        # DifyProvider._build_end_user 内部完成;LLM 路径保持原实现不动。
         stream_start = time.monotonic()
         max_stream_duration = 300.0
-        content_started = False
-        thinking_started = False
-        first_token_logged = False
-        try:
-            stream_create_start = time.monotonic()
-            stream_iter = llm.chat_completion(
-                messages=messages,
-                system_prompt=None,
-                stream=True,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ).__aiter__()
-            logger.info(
-                "chat_stream stream created agent_id=%s session_id=%s stream_create_ms=%.1f",
-                request.agent_id,
-                session_public_id,
-                (time.monotonic() - stream_create_start) * 1000,
-            )
 
-            while True:
-                elapsed = time.monotonic() - stream_start
-                if elapsed > max_stream_duration:
-                    logger.warning("Stream timeout after %.0fs", elapsed)
-                    fallback = get_restricted_reply(
-                        _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
-                    )
-                    yield sse_event("content", {"content": fallback})
-                    yield sse_event(
-                        "done",
-                        {
-                            "message_id": None,
-                            "session_id": session_public_id,
-                            "usage": None,
-                            "taken_over": False,
-                        },
-                    )
-                    return
+        # M10 PR4a: 初始化 DifyProvider (仅当 agent.dify_workflow_id 非空)
+        _dify_provider = None
+        if _dify_workflow_id and _workspace_obj is not None:
+            try:
+                from services.dify.provider import DifyProvider
 
-                try:
-                    chunk = await asyncio.wait_for(
-                        stream_iter.__anext__(), timeout=15.0
-                    )
-                except StopAsyncIteration:
-                    break
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
-                    thinking_started = True
-                    yield sse_event(
-                        "thinking", {"elapsed": int(time.monotonic() - stream_start)}
-                    )
-                    continue
+                _dify_provider = DifyProvider(
+                    workspace=_workspace_obj,
+                    agent=_agent,
+                    visitor_id=_session_visitor_id,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "chat_stream: DifyProvider init failed, falling back to LLM: %s",
+                    exc,
+                )
 
-                reply_parts.append(chunk)
-                if not content_started and chunk.strip():
-                    content_started = True
-                    if not first_token_logged:
-                        first_token_logged = True
-                        logger.info(
-                            "chat_stream first token agent_id=%s session_id=%s first_token_ms=%.1f total_before_first_ms=%.1f",
-                            request.agent_id,
-                            session_public_id,
-                            (time.monotonic() - stream_start) * 1000,
-                            (time.monotonic() - request_start) * 1000,
+        if _dify_provider is not None:
+            # ---- M10 PR4a: Dify 路径 — 透传 SseProxyLayer 字节 ----
+            from services.dify.provider import extract_message_complete_text
+
+            dify_reply: list[str] = []
+            try:
+                stream_iter = _dify_provider.stream_chat(
+                    text=combined_user_text or request.message,
+                    language=request.locale or request.widget_locale,
+                    file_ids=attachment_db_ids,
+                    session_public_id=session_public_id,
+                ).__aiter__()
+                logger.info(
+                    "chat_stream Dify stream created agent_id=%s session_id=%s",
+                    request.agent_id,
+                    session_public_id,
+                )
+
+                while True:
+                    elapsed = time.monotonic() - stream_start
+                    if elapsed > max_stream_duration:
+                        logger.warning("Dify stream timeout after %.0fs", elapsed)
+                        fallback = get_restricted_reply(
+                            _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
                         )
-                    if thinking_started:
-                        yield sse_event("thinking_done", {})
-                yield sse_event("content", {"content": chunk})
-                await asyncio.sleep(0)
-        except Exception:
-            logger.exception("LLM streaming failed")
-            # Graceful fallback: return agent's restricted reply instead of a technical error
-            fallback = get_restricted_reply(
-                _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
-            )
-            yield sse_event("content", {"content": fallback})
-            yield sse_event(
-                "done",
-                {
-                    "message_id": None,
-                    "session_id": session_public_id,
-                    "usage": None,
-                    "taken_over": False,
-                },
-            )
-            return
+                        yield sse_event("content", {"content": fallback})
+                        yield sse_event(
+                            "done",
+                            {
+                                "message_id": None,
+                                "session_id": session_public_id,
+                                "usage": None,
+                                "taken_over": False,
+                            },
+                        )
+                        return
 
-        reply = replace_source_placeholders("".join(reply_parts), sources)
-        if not reply or not reply.strip():
-            logger.warning(
-                "LLM returned empty stream response for session %s", session_public_id
-            )
-            reply = get_restricted_reply(
-                _restricted_reply, "抱歉，我暂时无法回答这个问题，请换个方式提问。"
-            )
-            yield sse_event("content", {"content": reply})
-        real_usage = llm.get_last_usage()
-        if real_usage:
-            logger.info("chat stream usage from provider: %s", real_usage)
+                    try:
+                        chunk_bytes = await asyncio.wait_for(
+                            stream_iter.__anext__(), timeout=15.0
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        yield sse_event(
+                            "thinking",
+                            {"elapsed": int(time.monotonic() - stream_start)},
+                        )
+                        continue
+
+                    # 抓取 message_complete.text 供 Phase 3 持久化
+                    captured = extract_message_complete_text(chunk_bytes)
+                    if captured is not None and not dify_reply:
+                        dify_reply.append(captured)
+                    yield chunk_bytes
+                    await asyncio.sleep(0)
+            except Exception:
+                logger.exception("Dify streaming failed")
+                fallback = get_restricted_reply(
+                    _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
+                )
+                yield sse_event("content", {"content": fallback})
+                yield sse_event(
+                    "done",
+                    {
+                        "message_id": None,
+                        "session_id": session_public_id,
+                        "usage": None,
+                        "taken_over": False,
+                    },
+                )
+                return
+
+            reply = dify_reply[0] if dify_reply else ""
+            if not reply or not reply.strip():
+                logger.warning(
+                    "Dify returned empty stream response for session %s",
+                    session_public_id,
+                )
+                reply = get_restricted_reply(
+                    _restricted_reply,
+                    "抱歉，我暂时无法回答这个问题，请换个方式提问。",
+                )
+                yield sse_event("content", {"content": reply})
+            # Dify 路径不暴露 LLM usage, 退到字符级 fallback (build_chat_usage)
+            usage = build_chat_usage(messages, reply, use_mock_llm)
         else:
-            logger.info(
-                "chat stream usage: provider returned None, using character-length fallback"
-            )
-        usage = real_usage or build_chat_usage(messages, reply, use_mock_llm)
+            # ---- 原 LLM 路径 (M10 不动) ----
+            yield sse_event("sources", {"sources": sources})
+
+            reply_parts = []
+            content_started = False
+            thinking_started = False
+            first_token_logged = False
+            try:
+                stream_create_start = time.monotonic()
+                stream_iter = llm.chat_completion(
+                    messages=messages,
+                    system_prompt=None,
+                    stream=True,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                ).__aiter__()
+                logger.info(
+                    "chat_stream stream created agent_id=%s session_id=%s stream_create_ms=%.1f",
+                    request.agent_id,
+                    session_public_id,
+                    (time.monotonic() - stream_create_start) * 1000,
+                )
+
+                while True:
+                    elapsed = time.monotonic() - stream_start
+                    if elapsed > max_stream_duration:
+                        logger.warning("Stream timeout after %.0fs", elapsed)
+                        fallback = get_restricted_reply(
+                            _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
+                        )
+                        yield sse_event("content", {"content": fallback})
+                        yield sse_event(
+                            "done",
+                            {
+                                "message_id": None,
+                                "session_id": session_public_id,
+                                "usage": None,
+                                "taken_over": False,
+                            },
+                        )
+                        return
+
+                    try:
+                        chunk = await asyncio.wait_for(
+                            stream_iter.__anext__(), timeout=15.0
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        thinking_started = True
+                        yield sse_event(
+                            "thinking",
+                            {"elapsed": int(time.monotonic() - stream_start)},
+                        )
+                        continue
+
+                    reply_parts.append(chunk)
+                    if not content_started and chunk.strip():
+                        content_started = True
+                        if not first_token_logged:
+                            first_token_logged = True
+                            logger.info(
+                                "chat_stream first token agent_id=%s session_id=%s first_token_ms=%.1f total_before_first_ms=%.1f",
+                                request.agent_id,
+                                session_public_id,
+                                (time.monotonic() - stream_start) * 1000,
+                                (time.monotonic() - request_start) * 1000,
+                            )
+                        if thinking_started:
+                            yield sse_event("thinking_done", {})
+                    yield sse_event("content", {"content": chunk})
+                    await asyncio.sleep(0)
+            except Exception:
+                logger.exception("LLM streaming failed")
+                # Graceful fallback: return agent's restricted reply instead of a technical error
+                fallback = get_restricted_reply(
+                    _restricted_reply, "抱歉，当前服务繁忙，请稍后再试。"
+                )
+                yield sse_event("content", {"content": fallback})
+                yield sse_event(
+                    "done",
+                    {
+                        "message_id": None,
+                        "session_id": session_public_id,
+                        "usage": None,
+                        "taken_over": False,
+                    },
+                )
+                return
+
+            reply = replace_source_placeholders("".join(reply_parts), sources)
+            if not reply or not reply.strip():
+                logger.warning(
+                    "LLM returned empty stream response for session %s",
+                    session_public_id,
+                )
+                reply = get_restricted_reply(
+                    _restricted_reply,
+                    "抱歉，我暂时无法回答这个问题，请换个方式提问。",
+                )
+                yield sse_event("content", {"content": reply})
+            real_usage = llm.get_last_usage()
+            if real_usage:
+                logger.info("chat stream usage from provider: %s", real_usage)
+            else:
+                logger.info(
+                    "chat stream usage: provider returned None, using character-length fallback"
+                )
+            usage = real_usage or build_chat_usage(messages, reply, use_mock_llm)
 
         # Phase 3: Persistence with fresh DB session
         async with database.AsyncSessionLocal() as persist_db:
@@ -1842,6 +1979,38 @@ async def get_contexts(
 # ========== Agent Management ==========
 
 
+# M10+3 — Workspace config (read-only, super_admin only). Frontend uses this
+# via ``useWorkspaceConfig`` hook to gate Dify-specific UI (workflow form
+# fields, publish badge, "Open in Dify Studio" link) on workspace.dify_enabled.
+# Does NOT expose the decrypted admin password — only a boolean flag.
+@router.get("/workspace/config", response_model=WorkspaceConfigResponse)
+async def get_workspace_config(
+    current_user: AdminUser = Depends(require_chat_operator),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current admin has no workspace assigned",
+        )
+    result = await db.execute(
+        select(Workspace).where(Workspace.id == current_user.workspace_id)
+    )
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+    return WorkspaceConfigResponse(
+        dify_enabled=bool(workspace.dify_enabled),
+        dify_api_base=workspace.dify_api_base,
+        dify_admin_configured=bool(
+            workspace.dify_admin_email and workspace.dify_admin_password_ref
+        ),
+    )
+
+
 @router.get("/agents", response_model=AgentListResponse)
 async def list_agents(
     current_user: AdminUser = Depends(require_chat_operator),
@@ -1917,6 +2086,17 @@ async def create_agent(
             detail=f"Workspace agent limit reached (max {quota.max_agents})",
         )
 
+    # M10+2: 加载 workspace 用于 Dify 集成层判断 (dify_enabled + admin 凭据)
+    workspace_result = await db.execute(
+        select(Workspace).where(Workspace.id == current_user.workspace_id)
+    )
+    workspace = workspace_result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workspace not found",
+        )
+
     persona_type = request.persona_type or "general"
     system_prompt = request.system_prompt
     if not system_prompt and persona_type in PERSONA_PRESETS:
@@ -1951,6 +2131,67 @@ async def create_agent(
     # Note: we no longer create AgentMember for super_admin automatically
     # Super admins use workspace-based auth (agent.workspace_id == admin.workspace_id)
     # Agent membership must be explicitly assigned via /agents/{id}/members endpoint
+
+    # M10+2 D1+D2+D9(c): create_agent endpoint 接入 DifyAdminClient (kickoff §7.B)
+    # 流程: flush 取 agent.id (不 commit) → 4 步 Dify 集成 → 终态 commit / 异常 rollback
+    await db.flush()
+
+    if workspace.dify_enabled:
+        # M10+2 fail-fast (kickoff §6.2): dify_enabled=True 但 admin 凭据缺失 → 400
+        # 不调 Dify, 避免给 Dify 留 orphan App
+        if not workspace.dify_admin_email or not workspace.dify_admin_password_ref:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "workspace.dify_enabled=True but Dify admin credentials are missing. "
+                    "Set workspace.dify_admin_email + workspace.dify_admin_password_ref."
+                ),
+            )
+
+        try:
+            dify = DifyAdminClient.from_workspace(workspace)
+            # Step 1+2: 2-step create app + workflow (D3 课程修正)
+            #   step 2 失败时 DifyAdminClient 内部已调 DELETE /apps/{id} 回滚 (D2 守门)
+            create_result = await dify.create_app_and_workflow(
+                name=request.name,
+                description=request.description or "",
+                mode="workflow",
+            )
+            agent.dify_app_id = create_result["app_id"]
+            agent.dify_workflow_id = create_result["workflow_id"]
+
+            # Step 3+4: enable API + create per-agent runtime API key (D8)
+            #   失败 → raise, 外层 catch 触发 rollback
+            api_key = await dify.enable_api_and_create_key(create_result["app_id"])
+            agent.dify_api_key = encrypt_api_key(api_key)
+
+            # Step 5: publish_workflow (D9(c) 容错: 400/422 → False 不抛)
+            #   失败 = 业务可恢复, 不回滚, status='publish_failed' 写入 DB
+            publish_ok = await dify.publish_workflow(create_result["app_id"])
+            if publish_ok:
+                agent.dify_publish_status = "published"
+            else:
+                agent.dify_publish_status = "publish_failed"
+                agent.dify_publish_error = (
+                    "Dify workflow publish failed (likely empty graph validation). "
+                    "Admin can retry publish in Dify UI."
+                )
+        except (DifyConfigError, DifyAuthError, DifyUpstreamError, httpx.HTTPError) as e:
+            # M10+2 D2: 系统故障回滚 (5xx / 网络错 / auth 错)
+            # 整笔事务回滚, DB 无 agent 行, DifyAdminClient 内部 _delete_app 已清理 Dify App
+            logger.error(
+                "Dify workflow creation failed for agent %s: %s: %s",
+                agent.id,
+                type(e).__name__,
+                e,
+            )
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Dify workflow creation failed: {e}",
+            )
+
     await db.commit()
     await db.refresh(agent)
     return await build_agent_config_with_stats(agent, db)
@@ -3511,6 +3752,7 @@ async def clear_all_urls(
     return {
         "success": True,
         "message": "All URLs and associated KB data cleared successfully",
+        "deleted_count": deleted_url_count,
         "deleted_url_count": deleted_url_count,
         "deleted_doc_count": deleted_doc_count,
         "deleted_chunk_count": deleted_chunk_count,

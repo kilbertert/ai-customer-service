@@ -1,5 +1,9 @@
 """M4 FastAPI app — China Charge Dify H5 Chat Backend.
 
+> **FROZEN-DEPRECATED 2026-06-15** — M10 G4 PR3 物理合并完成。本文件已在
+> basjoo 仓 `backend/services/dify/main.py` 落地 (commit `475246c`)。新改动
+> 请在 basjoo 仓提交,本目录保留只读。详见 `china_charge_kf/M10-FROZEN-README.md`。
+
 M8.5 — `_sse_bytes` / `_truncate_error` 私有 helpers 已提取到
 `app_dify.sse_bytes` 公共模块（DRY 修复，与 `sse_proxy_layer.py` 共享）。
 """
