@@ -191,4 +191,5 @@ ssl/
 
 .claude/
 /dify/
+dify-1.14.2/
 .playwright-mcp/
