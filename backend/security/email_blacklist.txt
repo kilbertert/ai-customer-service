@@ -1,0 +1,11 @@
+# 临时邮箱域名黑名单,每行一个
+tempmail.com
+guerrillamail.com
+mailinator.com
+10minutemail.com
+throwawaymail.com
+yopmail.com
+trashmail.com
+fakeinbox.com
+getnada.com
+sharklasers.com

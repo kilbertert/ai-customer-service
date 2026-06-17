@@ -7,11 +7,12 @@ API级速率限制中间件
 """
 
 from collections import defaultdict, deque
+from functools import wraps
 import logging
 import time
 from typing import Deque, Dict, Optional, Tuple
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
@@ -129,6 +130,101 @@ def check_memory_sliding_window(
     history.append(now)
     remaining = max(0, max_requests - len(history))
     return True, remaining
+
+
+# ── M11 PR3 — 端点级 IP+email 限速装饰器 ───────────────────────────────
+# 复用上面的滑动窗口逻辑, 加一层 Redis 优先 + 内存兜底。专门用于注册/重置密码等
+# 高敏感端点, 防止单一 IP 或邮箱暴力枚举。
+_REGISTER_IP_HISTORY: Dict[str, Deque[float]] = defaultdict(deque)
+_REGISTER_EMAIL_HISTORY: Dict[str, Deque[float]] = defaultdict(deque)
+
+
+async def _check_endpoint_rate_limit(
+    key: str,
+    max_requests: int,
+    window_seconds: int,
+    history_map: Dict[str, Deque[float]],
+) -> bool:
+    """端点级限速。优先 Redis, 失败/不健康兜底内存滑动窗口。"""
+    redis_healthy = False
+    try:
+        from services.redis_service import get_redis
+        redis = await get_redis()
+        if redis is not None and await redis.health_check():
+            allowed, _ = await redis.check_rate_limit(
+                key, max_requests=max_requests, window_seconds=window_seconds
+            )
+            redis_healthy = True
+            return allowed
+    except Exception as e:
+        logger.debug("Redis endpoint rate-limit fallback to memory: %s", e)
+
+    if redis_healthy:
+        return True  # Redis 通了且没超限(刚拿到 allowed=True)
+
+    allowed, _ = check_memory_sliding_window(
+        history_map, key,
+        max_requests=max_requests, window_seconds=window_seconds,
+    )
+    return allowed
+
+
+def rate_limit_by_ip_and_email(
+    ip_limit: int,
+    email_limit: int,
+    window_seconds: int,
+):
+    """端点装饰器: 同时限速 IP 和 email。
+
+    Usage::
+
+        @router.post("/register")
+        @rate_limit_by_ip_and_email(ip_limit=5, email_limit=3, window_seconds=3600)
+        async def register_tenant(req: TenantRegisterRequest, request: Request, ...): ...
+
+    IP 来自 ``Request.client.host``(走 ``get_request_client_ip`` 兼容反向代理);
+    email 优先从 kwargs 中的 Pydantic body 取 ``req.email``, 退一步从
+    ``X-Tenant-Email`` header 取。
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            request = kwargs.get("request")
+            if request is None:
+                for a in args:
+                    if isinstance(a, Request):
+                        request = a
+                        break
+            if request is None:
+                # 装饰器拿不到 Request: 降级放行, 不阻断业务
+                return await func(*args, **kwargs)
+
+            client_ip = get_request_client_ip(request)
+            ip_key = f"ratelimit:register_ip:{client_ip}"
+            if not await _check_endpoint_rate_limit(
+                ip_key, ip_limit, window_seconds, _REGISTER_IP_HISTORY
+            ):
+                raise HTTPException(429, "Too many requests from this IP")
+
+            email = ""
+            for candidate_name in ("req", "payload", "data", "body"):
+                body = kwargs.get(candidate_name)
+                if body is not None and hasattr(body, "email"):
+                    email = str(getattr(body, "email", "") or "")
+                    if email:
+                        break
+            if not email:
+                email = request.headers.get("X-Tenant-Email", "")
+            if email:
+                email_key = f"ratelimit:register_email:{email.lower()}"
+                if not await _check_endpoint_rate_limit(
+                    email_key, email_limit, window_seconds, _REGISTER_EMAIL_HISTORY
+                ):
+                    raise HTTPException(429, "Too many requests for this email")
+
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

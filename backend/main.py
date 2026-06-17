@@ -11,6 +11,7 @@ from database import init_db
 from api.endpoints import auth
 from api.v1 import endpoints as v1_endpoints
 from api.v1 import kb_document_endpoints as v1_kb_doc_endpoints
+from api.v1.tenants import router as tenants_router
 from services.scheduler import (
     agent_purge_scheduler,
     url_fetch_scheduler,
@@ -66,6 +67,28 @@ async def lifespan(app: FastAPI):
         await agent_purge_scheduler.purge_expired_agents()
         agent_purge_scheduler.start()
         logger.info("智能体清理调度器已启动")
+
+        # M11 PR3 — Dify tenant provisioning 健康探测 + 自动重试 cron
+        if settings.dify_tenant_provision_enabled:
+            import asyncio as _asyncio
+            try:
+                from services.dify.tenant_provisioner import DifyTenantProvisioner
+                from scheduler.tenant_provisioning_retry import (
+                    schedule_tenant_provisioning_retry,
+                )
+                provisioner = DifyTenantProvisioner()
+                if not await provisioner.health_check():
+                    logger.warning(
+                        "Dify fork endpoint not healthy, /tenants/register will return 503"
+                    )
+                _asyncio.create_task(
+                    schedule_tenant_provisioning_retry(
+                        interval_seconds=settings.tenant_provisioning_retry_interval_seconds,
+                    )
+                )
+                logger.info("租户 provisioning 自动重试 cron 已启动")
+            except Exception as e:
+                logger.warning("tenant provisioning 启动钩子失败: %s", e)
     else:
         logger.info("测试模式已启用，跳过 Redis 和调度器启动")
 
@@ -182,6 +205,8 @@ app.include_router(v1_kb_doc_endpoints.router, tags=["kb-documents"])
 # PR13: public chat-visitor attachment upload + content streaming.
 from api.v1.attachments_endpoints import router as attachments_router
 app.include_router(attachments_router, prefix="/api/v1")
+# M11 PR3 — B 端租户自助注册
+app.include_router(tenants_router)
 
 
 # SDK.js 路由 - 用于嵌入 widget

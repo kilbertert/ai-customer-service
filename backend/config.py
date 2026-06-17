@@ -195,6 +195,14 @@ class Settings(BaseSettings):
     login_rate_limit_max_attempts: int = 5
     login_rate_limit_window_seconds: int = 300
 
+    # M11 PR3 — B 端租户自助注册
+    dify_tenant_provision_enabled: bool = True
+    tenant_signup_ip_rate_limit: int = 5
+    tenant_signup_email_rate_limit: int = 3
+    tenant_signup_rate_limit_window_seconds: int = 3600
+    tenant_provisioning_max_attempts: int = 3
+    tenant_provisioning_retry_interval_seconds: int = 300
+
     # 日志
     log_level: str = "info"
 
