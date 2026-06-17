@@ -40,34 +40,79 @@ class DifyTenantProvisioner:
     def __init__(self, client: Optional[DifyAdminClient] = None) -> None:
         if client is not None:
             self.client = client
+            self._bearer_key = ""
             return
 
-        # 系统级 Dify super-admin 凭据来自 settings, 用于 provisioning
-        # workspace (此时 workspace 还没有自己的 Dify 凭据)
         api_base = (settings.dify_api_base or "").strip()
+        admin_api_key = (settings.dify_admin_api_key or "").strip()
         admin_email = (settings.dify_admin_email or "").strip()
         admin_password = settings.dify_admin_password or ""
 
-        if not api_base or not admin_email or not admin_password:
+        if not api_base:
+            raise DifyConfigError(
+                "DifyTenantProvisioner: DIFY_API_BASE not set. "
+                "Required for /api/v1/tenants/register to reach Dify admin endpoints."
+            )
+
+        # M11 PR1 fork: 优先 Bearer ADMIN_API_KEY, fallback email/password
+        if admin_api_key:
+            self._bearer_key = admin_api_key
+            self.client = None
+            return
+
+        if not admin_email or not admin_password:
             missing = []
-            if not api_base:
-                missing.append("DIFY_API_BASE")
             if not admin_email:
                 missing.append("DIFY_ADMIN_EMAIL")
             if not admin_password:
                 missing.append("DIFY_ADMIN_PASSWORD")
             raise DifyConfigError(
                 "DifyTenantProvisioner: system Dify admin not configured. "
-                f"Missing env vars: {', '.join(missing)}. "
-                "These are required for /api/v1/tenants/register to create new Dify "
-                "workspaces (workspace-level Dify creds do not exist yet at provision time)."
+                + "Missing env vars: " + ", ".join(missing)
+                + " (or set DIFY_ADMIN_API_KEY for Bearer auth). "
+                + "Required for /api/v1/tenants/register to create new Dify "
+                + "workspaces (workspace-level Dify creds do not exist yet at provision time)."
             )
 
+        self._bearer_key = ""
         self.client = DifyAdminClient(
             api_base=api_base,
             admin_email=admin_email,
             admin_password=admin_password,
         )
+
+    def _bearer_base_url(self) -> str:
+        return (settings.dify_admin_api_base or settings.dify_api_base or "").rstrip("/").rstrip("/v1")
+
+    def _bearer_headers(self, correlation_id: str = "") -> dict:
+        h = {"Authorization": "Bearer " + self._bearer_key}
+        if correlation_id:
+            h["X-Basjoo-Correlation-Id"] = correlation_id
+        return h
+
+    async def _bearer_post(self, path, body, correlation_id: str = ""):
+        import httpx
+        async with httpx.AsyncClient(
+            base_url=self._bearer_base_url(),
+            timeout=30.0,
+        ) as client:
+            return await client.post(path, json=body, headers=self._bearer_headers(correlation_id))
+
+    async def _bearer_delete(self, path):
+        import httpx
+        async with httpx.AsyncClient(
+            base_url=self._bearer_base_url(),
+            timeout=30.0,
+        ) as client:
+            return await client.delete(path, headers=self._bearer_headers())
+
+    async def _bearer_get(self, path):
+        import httpx
+        async with httpx.AsyncClient(
+            base_url=self._bearer_base_url(),
+            timeout=30.0,
+        ) as client:
+            return await client.get(path, headers=self._bearer_headers())
 
     async def provision_tenant(
         self,
@@ -78,21 +123,34 @@ class DifyTenantProvisioner:
         idempotency_key: str,
         correlation_id: str,
     ) -> Dict[str, Any]:
-        client = await self.client._get_client()
-        resp = await client.post(
-            "/console/api/admin/workspaces",
-            json={
-                "workspace_name": workspace_name,
-                "owner_email": owner_email,
-                "owner_name": owner_name,
-                "owner_password": owner_password,
-                "idempotency_key": idempotency_key,
-            },
-            headers={
-                "X-CSRF-Token": client.cookies.get("csrf_token", ""),
-                "X-Basjoo-Correlation-Id": correlation_id,
-            },
-        )
+        if self._bearer_key:
+            resp = await self._bearer_post(
+                "/console/api/admin/workspaces",
+                {
+                    "workspace_name": workspace_name,
+                    "owner_email": owner_email,
+                    "owner_name": owner_name,
+                    "owner_password": owner_password,
+                    "idempotency_key": idempotency_key,
+                },
+                correlation_id=correlation_id,
+            )
+        else:
+            client = await self.client._get_client()
+            resp = await client.post(
+                "/console/api/admin/workspaces",
+                json={
+                    "workspace_name": workspace_name,
+                    "owner_email": owner_email,
+                    "owner_name": owner_name,
+                    "owner_password": owner_password,
+                    "idempotency_key": idempotency_key,
+                },
+                headers={
+                    "X-CSRF-Token": client.cookies.get("csrf_token", ""),
+                    "X-Basjoo-Correlation-Id": correlation_id,
+                },
+            )
         if resp.status_code == 409:
             raise DifyTenantConflictError(
                 f"Dify returned conflict: {resp.text[:500]}"
@@ -110,16 +168,18 @@ class DifyTenantProvisioner:
         }
 
     async def rollback_tenant(self, workspace_id: str) -> bool:
-        """删除已 provision 到 Dify 的 workspace(用于注册阶段失败回滚)。
-
-        返回 True 表示 Dify 接受了删除或根本不存在(False 让 caller 决定重试)。
-        """
+        """删除已 provision 到 Dify 的 workspace(用于注册阶段失败回滚)。"""
         try:
-            client = await self.client._get_client()
-            resp = await client.delete(
-                f"/console/api/admin/workspaces/{workspace_id}",
-                headers={"X-CSRF-Token": client.cookies.get("csrf_token", "")},
-            )
+            if self._bearer_key:
+                resp = await self._bearer_delete(
+                    "/console/api/admin/workspaces/" + workspace_id
+                )
+            else:
+                client = await self.client._get_client()
+                resp = await client.delete(
+                    "/console/api/admin/workspaces/" + workspace_id,
+                    headers={"X-CSRF-Token": client.cookies.get("csrf_token", "")},
+                )
             return resp.status_code in (200, 204, 404)
         except Exception as e:
             logger.exception("Failed to rollback Dify tenant %s: %s", workspace_id, e)
@@ -127,8 +187,13 @@ class DifyTenantProvisioner:
 
     async def health_check(self) -> bool:
         try:
-            client = await self.client._get_client()
-            resp = await client.get("/console/api/admin/workspaces/health")
+            if self._bearer_key:
+                resp = await self._bearer_get(
+                    "/console/api/admin/workspaces/health"
+                )
+            else:
+                client = await self.client._get_client()
+                resp = await client.get("/console/api/admin/workspaces/health")
             return resp.status_code == 200
         except Exception:
             return False

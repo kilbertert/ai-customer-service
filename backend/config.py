@@ -172,6 +172,14 @@ class Settings(BaseSettings):
     # /api/v1/tenants/register 返回 503 而不是 500
     dify_admin_email: str = ""
     dify_admin_password: str = ""
+    # M11 PR1 fork — Bearer ADMIN_API_KEY (Dify .env 配的 ADMIN_API_KEY)
+    # 用于 /console/api/admin/workspaces/* 的 @admin_required 装饰器校验
+    # 与 dify_admin_email/dify_admin_password 二选一(优先 Bearer)
+    dify_admin_api_key: str = ""
+    # M11 PR1 fork — Dify admin base URL (与 dify_api_base /v1 后缀不兼容, 单独配)
+    # 例: http://162.211.183.169  (无 /v1)
+    # 留空 → fallback 到 dify_api_base (legacy)
+    dify_admin_api_base: str = ""
 
     # Multimodal chat (PR13) — image captioning + voice transcription
     media_storage_dir: str = "/app/data/attachments"
