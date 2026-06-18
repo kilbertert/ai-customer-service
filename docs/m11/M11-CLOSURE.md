@@ -1,9 +1,9 @@
 # M11-CLOSURE — B 端多租户(Plan A 切换)系列收口
 
-> **版本**:v1.0 盖棺定论
-> **收口日期**:2026-06-17
+> **版本**:v1.1 — M11+ P0-A/B/C 收口注记
+> **收口日期**:2026-06-18(M11+ P0 闭环增量更新)
 > **基线 HEAD**:`404f191`(本仓库 `feat/m11-frontend-routing` 分支)
-> **状态**:M11 PR1-PR4 全部闭环,系列收口
+> **状态**:M11 PR1-PR4 + M11+ P0-A/B/C 全部闭环
 > **阅读对象**:下一会话接手 M11+ / M12+ backlog 的人(用户本人或新 Claude)
 
 ---
@@ -11,6 +11,8 @@
 ## 0. 一句话总结
 
 **M11 = basjoo 从单租户 bootstrap 切到 B 端多租户 Plan A(每个 B 端用户一个 basjoo Workspace + 一个 Dify Tenant + 一个 tenant_owner 角色)**。4 个 PR 全部闭环,基线 5d6b5be0 → `404f191`(5 个 commit,含 PR1 fork Bearer 化 + tenant_owner role gating 修复),Dify 自部署冻结期 fork rebase 工作量为 0,后续 backlog 转入 M11+ / M12+。
+
+**M11+ = 闭环 M11 系列放出来的 P0 必做项**:Plan A 切回 + Dify 升级 prep + Dify workflow 工具包集成。3 个 P0 stream 全部闭环,本文件 §4.1 标记为 ✅,详见 `docs/m11plus/M11PLUS-CLOSURE.md`。
 
 ---
 
@@ -48,6 +50,11 @@
 | **D2** | 成员邀请 v1 **不实现**,无期限延后 | `tenant_admin` / `tenant_member` 枚举值预留,v1 不创建;无邀请 UI | B端 doc §5 决策 3 |
 | **D3**(实施期) | `tenant_owner` = workspace 全权(等同 `super_admin` 在自家 workspace 范围);跨 workspace 仍只 `super_admin` | `RequireAuth.tsx` / `auth.py` / `endpoints.py` 7 处 + `is_workspace_owner()` helper | `9552f63` |
 | **D4**(实施期) | Plan B 基线保持:basjoo 创建 agent 时**不调 Dify 4 步**(`dify_app_id=NULL`,`dify_publish_status='draft'`) | `agent` 表 8 个 dify_* 字段在 Plan B 模式下均为 NULL;Plan A 切换 = 把这块从"没调"变成"必调" | E2E 验证 2026-06-17 |
+| **D5**(M11+) | Dify 1.14.2 fork **冻结期不 rebase**,升级时刻按 5+3=8 checklist 验 | 升级必跑 `docs/handoffs/M11-DIFY-1.15-UPGRADE.md` + `scripts/check_dify_1.15_breaking.sh`;冻结期内所有 Dify 改动走 fork patch | M11+ 战略 |
+| **D6**(M11+) | **Plan B 维持** + 准备 per-tenant API key(Plan A 是部署拓扑,不是必须) | basjoo 核心 = workspace-level 隔离;Plan A 是 Plan B 之上的可选升级 | `basjoo-dify-isolation-strategy.md` 2026-06-13 |
+| **D7**(M11+ P0-C) | **Dify workflow toolkit 集成层走 HTTP API + DB 直连**,干掉 SSH / docker exec / paramiko | `services/dify_toolkit/` 5 个新模块(deployer / verifier / db / constants / exceptions);CLI 走 `--workspace-id` 而非 `--ssh-host` | P0-C PR 2 D8/C1/C2/C3 |
+| **D8**(M11+ P0-C) | schema probe 守门:`probe_workflows_schema()` + `check_required_columns()` 缺列即 fail-fast | `services/dify_toolkit/db.py::_PROBE_SQL` + `constants.py::DIFY_WORKFLOWS_REQUIRED_COLUMNS` | P0-C PR 2 D10 |
+| **D9**(M11+ P0-C) | DB 写 OK + Dify publish 5xx → raise `DifyPublishError` 而非静默 200(防御性 — admin 需重 deploy) | `deployer.py::_audit` 5xx 分支 + endpoint 502 mapping | P0-C PR 2 D9c |
 
 ---
 
@@ -63,6 +70,9 @@
 | Alembic 迁移 | ✅ PASS | `workspaces` 表 +6 列 + 2 索引(PR2 闭环时已跑) |
 | `/api/v1/tenants/register` 503 优雅降级 | ✅ PASS | `58e047a` 修复 500→503 + docker-compose 留 DIFY_* 占位 |
 | 409 i18n 接线 | ✅ PASS | `ad3595a` 修复 tenant 注册 500 错误并接 409 i18n |
+| M11+ P0-A Plan A 切回代码路径就绪 | ✅ PASS | `tenant_service.register_tenant` 阶段 3 写 `dify_enabled=True` + `scripts/backfill_dify_enabled.py` 历史 ws 补开 |
+| M11+ P0-B Dify 升级 spec 完成 | ✅ PASS | `docs/handoffs/M11-DIFY-1.15-UPGRADE.md` 5+3=8 checklist 全部条目化 + `scripts/check_dify_1.15_breaking.sh` |
+| M11+ P0-C Dify workflow toolkit 重写 | ✅ PASS | `services/dify_toolkit/{deployer,verifier,db,constants,exceptions}.py` + 9 测试 PASSED |
 
 **未通过 / 未执行的 gate**(诚实标注):
 - ⚠️ **CI 自动化测试**:M11 PR1-PR4 的 CI 门未在本机跑过,需在远端 CI / 真 basjoo chat_stream 验证后填 `CONDITIONAL PASS → UNCONDITIONAL PASS`
@@ -72,15 +82,32 @@
 
 ## 4. 未完成 backlog(转入 M11+ / M12+)
 
-### 4.1 P0 — M11+ 必做
+### 4.1 P0 — M11+ 必做 (✅ 2026-06-18 全部闭环)
 
-- **P0-A** Plan A 切回:basjoo 创建 agent 时调 Dify 4 步(`create_app_and_workflow`),让 `dify_app_id` 从 NULL 变成 UUID;Plan B 模式当前是"基线可跑"但不是"Plan A 切完"
-- **P0-B** Dify 1.15+ 升级时的 A 路径兼容测试(5 条 checklist):
-  - [ ] `TenantService.create_tenant(name, is_setup=...)` 签名兼容
-  - [ ] `TenantService.create_tenant_member(...)` 签名兼容
-  - [ ] `AccountService.create_account(...)` 对外暴露
-  - [ ] `@admin_required` 装饰器仍位于 `controllers/console/admin.py`
-  - [ ] 无 `TenantPluginAutoUpgradeStrategy` 之外的强制初始化逻辑
+- ✅ **P0-A** Plan A 切回:basjoo 创建 agent 时调 Dify 4 步(`create_app_and_workflow`),让 `dify_app_id` 从 NULL 变成 UUID。
+  - **代码路径就绪**:`services/tenant_service.py::register_tenant` 阶段 3 写 `dify_enabled=True` + 4 字段(D5 决策落地)
+  - **历史 ws 补开**:`scripts/backfill_dify_enabled.py` + `docs/runbooks/m11plus-p0a-backfill-dify-enabled.md`(覆盖 M11 PR1 之前的 ws)
+  - **PR 1-2**:已合(`e0f0b6b` ... `5e00c2f`)
+  - **PR 3 (backfill)**:本会话收口(`scripts/` 目录新建)
+  - **PR 4 (closure doc)**:本文件 + `M11PLUS-CLOSURE.md`
+
+- ✅ **P0-B** Dify 1.15+ 升级时的 A 路径兼容测试:
+  - ✅ `TenantService.create_tenant(name, is_setup=...)` 签名兼容 — checklist 写定
+  - ✅ `TenantService.create_tenant_member(...)` 签名兼容 — checklist 写定
+  - ✅ `AccountService.create_account(...)` 对外暴露 — checklist 写定
+  - ✅ `@admin_required` 装饰器仍位于 `controllers/console/admin.py` — checklist 写定
+  - ✅ 无 `TenantPluginAutoUpgradeStrategy` 之外的强制初始化逻辑 — checklist 写定
+  - **交付物**:`docs/handoffs/M11-DIFY-1.15-UPGRADE.md`(5+3=8 checklist)+ `scripts/check_dify_1.15_breaking.sh`(升级日执行脚本)
+  - **执行时刻**:Dify 升级日(冻结期不要求);必跑 + 失败即阻断升级
+
+- ✅ **P0-C** Dify workflow 工具包集成(Route #4):
+  - **架构**:干掉 SSH / docker exec / paramiko,走 HTTP API(`DifyAdminClient`) + DB 直连(`psycopg2` ThreadedConnectionPool)
+  - **PR 1**:cp `tools/dify_workflow_toolkit/builder/` + `yml_validator/` → `backend/services/dify_toolkit/`,改包名
+  - **PR 2**:重写 `deployer` / `verifier` / `cli`;新增 5 模块(constants / exceptions / db / deployer / verifier)
+  - **PR 3 (测试)**:
+    - `tests/test_dify_toolkit_p0c.py` — 6 单元测试(Deployer from_workspace / probe schema / publish failure)
+    - `tests/test_api_workflow_deploy.py` — 3 端点集成测试(deploy 200 / schema 502 / 403)
+  - **PR 4 (closure doc)**:本文件 §2 D7-D9 + `M11PLUS-CLOSURE.md` §P0-C
 
 ### 4.2 P1 — M11+ 排队
 
@@ -88,6 +115,7 @@
 - **P1-B** M3/M6/M7 路由层压力测试(M11 PR4 实施期内简化,没跑全量压测)
 - **P1-C** `audit_log` 表查询后台 admin UI
 - **P1-D** `/tenants/register` 限速(IP + email 双维度 + 域名黑名单),防 Dify 撑爆
+- **P1-E** Plan A 真机 E2E(M11+ P0-A 代码就绪但真机验证未跑)— 留本机 / CI
 
 ### 4.3 P2 — M12+ / 视情况启动
 
@@ -331,3 +359,4 @@ docs/m11/
 | 版本 | 日期 | 改动 | commit |
 |------|------|------|--------|
 | v1.0 | 2026-06-17 | 初稿,M11 PR1-PR4 收口 + 方法论 | (本文件 commit) |
+| v1.1 | 2026-06-18 | M11+ P0-A/B/C 闭环注记:§2 加 D5-D9 决策,§3 加 3 行 P0 gate,§4.1 P0 全部 mark ✅,§4.2 加 P1-E | (本会话 commit) |

@@ -13,6 +13,8 @@ from typing import Any, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
+from core.encryption import encrypt_api_key
 from models import AdminUser, AuditLog, Workspace, WorkspaceQuota
 from services.auth_service import AuthService
 from services.dify.tenant_provisioner import DifyTenantProvisioner
@@ -119,6 +121,15 @@ class TenantService:
         ws.dify_account_id = dify_result["owner_account_id"]
         ws.dify_provisioning_status = "ready"
         ws.dify_provisioning_last_error = None
+        # M11+ P0-A (D5): persist Dify admin creds so create_agent can flip to Plan A.
+        # Without these 4 fields, workspace.dify_enabled stays False and the Plan A
+        # 4-step create_app_and_workflow path in create_agent is dead code.
+        ws.dify_api_base = settings.dify_api_base
+        ws.dify_admin_email = owner_email
+        ws.dify_admin_password_ref = encrypt_api_key(
+            dify_result["initial_password"]
+        )
+        ws.dify_enabled = True
         self.db.add(AuditLog(
             tenant_id=str(workspace_id),
             actor_user_id=admin_id,
@@ -175,5 +186,15 @@ class TenantService:
         ws.dify_account_id = dify_result["owner_account_id"]
         ws.dify_provisioning_status = "ready"
         ws.dify_provisioning_last_error = None
+        # M11+ P0-A (D5): persist Dify admin creds on retry success too.
+        # Same fields as register_tenant Stage 3; ensures workspaces that
+        # initially failed Dify provisioning but succeeded on retry still
+        # end up with Plan A ready for create_agent.
+        ws.dify_api_base = settings.dify_api_base
+        ws.dify_admin_email = ws.owner_email
+        ws.dify_admin_password_ref = encrypt_api_key(
+            dify_result["initial_password"]
+        )
+        ws.dify_enabled = True
         await self.db.commit()
         return {"success": True, "provisioning_status": "ready"}

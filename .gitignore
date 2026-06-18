@@ -131,6 +131,7 @@ temp/
 !/docs/multimodal-quickref.md
 !/docs/m11/
 !/docs/handoffs/
+!/docs/m11plus/
 
 # Local AI/code intelligence caches
 .pi-lens/cache/

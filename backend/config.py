@@ -181,6 +181,12 @@ class Settings(BaseSettings):
     # 留空 → fallback 到 dify_api_base (legacy)
     dify_admin_api_base: str = ""
 
+    # M11+ P0-C PR 2 (D8 决策) — Dify PostgreSQL 直连 DSN, 供 services/dify_toolkit/db.py
+    # 走 psycopg2 直连(干掉原 SSH + docker inspect 拿凭据的链路)。
+    # 默认指向 docker-compose 共用 postgres service, ops 切凭据走 Vault 不动代码。
+    # 多 DB 场景(Dify Cloud 模式 / per-tenant DB)→ 留 P1+,D9 决策已为 per-tenant 留位
+    dify_db_url: str = "postgresql://postgres:postgres@postgres:5432/dify"
+
     # Multimodal chat (PR13) — image captioning + voice transcription
     media_storage_dir: str = "/app/data/attachments"
     vision_api_key: str = ""

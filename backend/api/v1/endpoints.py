@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 
 import database
 from database import get_db
+from pydantic import BaseModel
 from config import DEFAULT_AGENT_MAX_TOKENS, DEFAULT_AGENT_SIMILARITY_THRESHOLD
 from api.endpoints.auth import (
     get_current_admin,
@@ -111,6 +112,11 @@ from services.dify.exceptions import (
     DifyAuthError,
     DifyConfigError,
     DifyUpstreamError,
+)
+from services.dify_toolkit import (
+    Deployer,
+    DifyPublishError,
+    DifySchemaError,
 )
 from middleware import get_request_client_ip
 from api.v1.sse_utils import sse_event
@@ -2064,6 +2070,243 @@ async def list_agents(
     )
 
 
+async def _provision_dify_app(agent: Agent, workspace: Workspace) -> None:
+    """M11+ P0-A (D5): Plan A 4 步 — create_app + enable_api + create_key + publish.
+
+    写 agent.dify_app_id / dify_workflow_id / dify_api_key / dify_publish_status。
+    失败 raise HTTPException(400/502);不 commit / 不 rollback — 由调用方负责。
+    Plan B 模式 (dify_enabled=False) → 静默 no-op,保留 agent.dify_app_id=NULL。
+    """
+    if not workspace.dify_enabled:
+        return  # Plan B 模式,保持 dify_app_id=NULL
+    if not workspace.dify_admin_email or not workspace.dify_admin_password_ref:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "workspace.dify_enabled=True but Dify admin credentials are missing. "
+                "Set workspace.dify_admin_email + workspace.dify_admin_password_ref."
+            ),
+        )
+    try:
+        dify = DifyAdminClient.from_workspace(workspace)
+        # Step 1+2: 2-step create app + workflow (D3 课程修正)
+        #   step 2 失败时 DifyAdminClient 内部已调 DELETE /apps/{id} 回滚 (D2 守门)
+        create_result = await dify.create_app_and_workflow(
+            name=agent.name,
+            description=agent.description or "",
+            mode="workflow",
+        )
+        agent.dify_app_id = create_result["app_id"]
+        agent.dify_workflow_id = create_result["workflow_id"]
+        # Step 3+4: enable API + create per-agent runtime API key (D8)
+        api_key = await dify.enable_api_and_create_key(create_result["app_id"])
+        agent.dify_api_key = encrypt_api_key(api_key)
+        # Step 5: publish_workflow (D9(c) 容错: 400/422 → False 不抛)
+        publish_ok = await dify.publish_workflow(create_result["app_id"])
+        if publish_ok:
+            agent.dify_publish_status = "published"
+        else:
+            agent.dify_publish_status = "publish_failed"
+            agent.dify_publish_error = (
+                "Dify workflow publish failed (likely empty graph validation). "
+                "Admin can retry publish in Dify UI."
+            )
+    except (DifyConfigError, DifyAuthError, DifyUpstreamError, httpx.HTTPError) as e:
+        # M10+2 D2: 系统故障 (5xx / 网络错 / auth 错)
+        # DifyAdminClient 内部 _delete_app 已清理 Dify App
+        logger.error(
+            "Dify workflow creation failed for agent %s: %s: %s",
+            agent.id,
+            type(e).__name__,
+            e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Dify workflow creation failed: {e}",
+        )
+
+
+@router.post(
+    "/agents/{agent_id}/activate-dify",
+    response_model=AgentConfig,
+    status_code=status.HTTP_200_OK,
+)
+async def activate_dify_for_agent(
+    agent_id: str,
+    current_user: AdminUser = Depends(require_admin_or_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M11+ P0-A (D6): lazy 为旧 Plan B agent 激活 Dify app + workflow.
+
+    前置条件: agent.dify_app_id IS NULL (Plan B),workspace.dify_enabled=True + 凭据齐。
+    副作用: 写 agent.dify_app_id / dify_workflow_id / dify_api_key / dify_publish_status。
+    权限: super_admin ∪ tenant_owner (D3 决策,M11 PR4 fix)。
+    失败: 502 Dify 5xx / 400 缺凭据 → rollback + raise。
+    """
+    if not is_workspace_owner(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only workspace owner (super_admin or tenant_owner) can activate Dify for an agent",
+        )
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if not agent or getattr(agent, "deleted_at", None) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+    if agent.dify_app_id:
+        # already Plan A, no-op
+        return await build_agent_config_with_stats(agent, db)
+    workspace_result = await db.execute(
+        select(Workspace).where(Workspace.id == agent.workspace_id)
+    )
+    workspace = workspace_result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+    try:
+        await _provision_dify_app(agent, workspace)
+    except HTTPException:
+        await db.rollback()
+        raise
+    await db.commit()
+    await db.refresh(agent)
+    return await build_agent_config_with_stats(agent, db)
+
+
+# ── M11+ P0-C PR 2 — Route #4 工具包集成端点 ───────────────────────────────
+class WorkflowDeployRequest(BaseModel):
+    """POST /workflows/{agent_id}/deploy 请求体。
+
+    yml: Dify workflow YAML 文本(``services.dify_toolkit.Workflow.to_yaml()`` 输出)。
+         也可接受 raw JSON dict 序列化的 yml 文本(若 client 端不便生成 YAML)。
+    """
+
+    yml: str
+
+
+class WorkflowDeployResponse(BaseModel):
+    """POST /workflows/{agent_id}/deploy 响应。
+
+    deployed:     True = DB 写 + Dify publish 都 OK
+    app_id:       Dify app UUID
+    rows_updated: DB UPDATE 受影响行数(1 = 命中 published row)
+    nodes:        workflow 顶层节点数(粗校验)
+    correlation_id: 同一次 deploy 调用的 audit 串 id
+    """
+
+    deployed: bool
+    app_id: str
+    rows_updated: int
+    nodes: int
+    correlation_id: str
+
+
+@router.post(
+    "/workflows/{agent_id}/deploy",
+    response_model=WorkflowDeployResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def deploy_agent_workflow(
+    agent_id: str,
+    payload: WorkflowDeployRequest,
+    current_user: AdminUser = Depends(require_admin_or_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M11+ P0-C PR 2 — 把 workflow yml 部署到 agent 对应 workspace 的 Dify tenant。
+
+    流程 (D8 决策):
+      1. 拿 agent + workspace,校验权限 (workspace_owner)
+      2. 校验 workspace.dify_enabled (Plan A 已落地)
+      3. 校验 agent.dify_app_id 非空 (Plan A agent 必须有 app)
+      4. Deployer.from_workspace(workspace) → probe schema → DB write → publish
+
+    异常 → HTTPException:
+      - 403: 非 workspace_owner
+      - 404: agent / workspace 不存在
+      - 400: workspace.dify_enabled=False 或 agent.dify_app_id 空 (P0-A 未落地)
+      - 502: DifySchemaError (缺列) / DifyPublishError (publish 失败)
+
+    审计: 所有路径由 Deployer 内部写 AuditLog (action="workflow.deploy_*")。
+    """
+    if not is_workspace_owner(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only workspace owner (super_admin or tenant_owner) can deploy workflows",
+        )
+
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if not agent or getattr(agent, "deleted_at", None) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+
+    workspace_result = await db.execute(
+        select(Workspace).where(Workspace.id == agent.workspace_id)
+    )
+    workspace = workspace_result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+
+    if not getattr(workspace, "dify_enabled", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Workspace Dify not enabled (P0-A 未落地 — 跑 "
+                "scripts/backfill_dify_enabled.py 或走 /agents/{id}/activate-dify)"
+            ),
+        )
+    if not agent.dify_app_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Agent has no dify_app_id (Plan B). Run POST "
+                "/agents/{id}/activate-dify first to provision Dify app."
+            ),
+        )
+
+    correlation_id = str(uuid.uuid4())
+    deployer = Deployer.from_workspace(workspace)
+    try:
+        result = await deployer.deploy(
+            yml=payload.yml,
+            app_id=agent.dify_app_id,
+            actor_user_id=current_user.id,
+            correlation_id=correlation_id,
+            db_session=db,
+            tenant_id_for_audit=str(workspace.id),
+        )
+    except DifySchemaError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                f"Dify workflows schema mismatch — missing={e.missing} "
+                f"actual={e.actual}. Check Dify version (P0-B 1.15+ upgrade)."
+            ),
+        )
+    except DifyPublishError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Dify publish failed: {e}",
+        )
+
+    return WorkflowDeployResponse(
+        deployed=result.deployed,
+        app_id=result.app_id,
+        rows_updated=result.rows_updated,
+        nodes=result.nodes,
+        correlation_id=correlation_id,
+    )
+
+
 @router.post("/agents", response_model=AgentConfig, status_code=status.HTTP_201_CREATED)
 async def create_agent(
     request: AgentCreateRequest,
@@ -2157,60 +2400,14 @@ async def create_agent(
     await db.flush()
 
     if workspace.dify_enabled:
-        # M10+2 fail-fast (kickoff §6.2): dify_enabled=True 但 admin 凭据缺失 → 400
-        # 不调 Dify, 避免给 Dify 留 orphan App
-        if not workspace.dify_admin_email or not workspace.dify_admin_password_ref:
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "workspace.dify_enabled=True but Dify admin credentials are missing. "
-                    "Set workspace.dify_admin_email + workspace.dify_admin_password_ref."
-                ),
-            )
-
+        # M11+ P0-A (D5): Plan A 路径提取到 _provision_dify_app helper,
+        # create_agent 和 activate-dify 端点共用同一 Plan A 4 步。
+        # Plan B 模式 (dify_enabled=False) → helper 静默 no-op,agent.dify_app_id 保持 NULL。
         try:
-            dify = DifyAdminClient.from_workspace(workspace)
-            # Step 1+2: 2-step create app + workflow (D3 课程修正)
-            #   step 2 失败时 DifyAdminClient 内部已调 DELETE /apps/{id} 回滚 (D2 守门)
-            create_result = await dify.create_app_and_workflow(
-                name=request.name,
-                description=request.description or "",
-                mode="workflow",
-            )
-            agent.dify_app_id = create_result["app_id"]
-            agent.dify_workflow_id = create_result["workflow_id"]
-
-            # Step 3+4: enable API + create per-agent runtime API key (D8)
-            #   失败 → raise, 外层 catch 触发 rollback
-            api_key = await dify.enable_api_and_create_key(create_result["app_id"])
-            agent.dify_api_key = encrypt_api_key(api_key)
-
-            # Step 5: publish_workflow (D9(c) 容错: 400/422 → False 不抛)
-            #   失败 = 业务可恢复, 不回滚, status='publish_failed' 写入 DB
-            publish_ok = await dify.publish_workflow(create_result["app_id"])
-            if publish_ok:
-                agent.dify_publish_status = "published"
-            else:
-                agent.dify_publish_status = "publish_failed"
-                agent.dify_publish_error = (
-                    "Dify workflow publish failed (likely empty graph validation). "
-                    "Admin can retry publish in Dify UI."
-                )
-        except (DifyConfigError, DifyAuthError, DifyUpstreamError, httpx.HTTPError) as e:
-            # M10+2 D2: 系统故障回滚 (5xx / 网络错 / auth 错)
-            # 整笔事务回滚, DB 无 agent 行, DifyAdminClient 内部 _delete_app 已清理 Dify App
-            logger.error(
-                "Dify workflow creation failed for agent %s: %s: %s",
-                agent.id,
-                type(e).__name__,
-                e,
-            )
+            await _provision_dify_app(agent, workspace)
+        except HTTPException:
             await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Dify workflow creation failed: {e}",
-            )
+            raise
 
     await db.commit()
     await db.refresh(agent)
