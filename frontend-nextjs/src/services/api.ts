@@ -252,6 +252,38 @@ export interface AgentCreateInput {
 	// so the API contract is in place for M11+ DSL template wiring.
 	workflow_mode?: WorkflowMode;
 	icon_emoji?: string;
+	// M12 PR-3 — wizard 入口 3 个新字段,全部可选。
+	template_id?: string;
+	template_params?: Record<string, unknown>;
+	user_requirements?: string;
+}
+
+// M12 PR-3 — workflow template + preview API 客户端类型。
+export interface WorkflowTemplateMeta {
+	id: string;
+	name: string;
+	description: string;
+	category: "chat" | "rag" | "branching" | "tool";
+	min_dify_version: string;
+	params_schema_json: Record<string, unknown>;
+	yml_preview: string;
+}
+
+export interface WorkflowTemplateListResponse {
+	templates: WorkflowTemplateMeta[];
+	total: number;
+}
+
+export interface WorkflowPreviewRequest {
+	template_id: string;
+	user_requirements?: string;
+	params_overrides?: Record<string, unknown>;
+}
+
+export interface WorkflowPreviewResponse {
+	yml_text: string;
+	node_count: number;
+	attempt_count: number;
 }
 
 export async function parseErrorResponse(response: Response): Promise<string> {
@@ -691,6 +723,25 @@ class APIService {
 		return agent;
 	}
 
+	// M12 PR-3 — workflow templates / preview
+	async listTemplates(): Promise<WorkflowTemplateListResponse> {
+		return this.request<WorkflowTemplateListResponse>(
+			"/api/v1/workflows/templates",
+		);
+	}
+
+	async generateWorkflowPreview(
+		request: WorkflowPreviewRequest,
+	): Promise<WorkflowPreviewResponse> {
+		return this.request<WorkflowPreviewResponse>(
+			"/api/v1/workflows/preview",
+			{
+				method: "POST",
+				body: JSON.stringify(request),
+			},
+		);
+	}
+
 	async deleteAgent(
 		agentId: string,
 	): Promise<{ success: boolean; deleted_at?: string; purge_after?: string }> {
@@ -764,6 +815,78 @@ class APIService {
 
 	async getAgent(agentId: string): Promise<Agent> {
 		return this.request<Agent>(`/api/v1/agent?agent_id=${agentId}`);
+	}
+
+	// M12 PR-6 — admin-only regenerate-workflow. Re-deploys the workflow yml
+	// to the same Dify app_id; pass `{}` to reuse stored template, or override
+	// with {template_id, template_params, user_requirements}.
+	async regenerateWorkflow(
+		agentId: string,
+		body: {
+			template_id?: string;
+			template_params?: Record<string, unknown>;
+			user_requirements?: string;
+		},
+	): Promise<{
+		deployed: boolean;
+		app_id: string;
+		workflow_id: string | null;
+		rows_updated: number;
+		attempt: number;
+		generation_meta: Record<string, unknown>;
+	}> {
+		return this.request(
+			`/api/v1/agents/${agentId}/regenerate-workflow`,
+			{
+				method: "POST",
+				body: JSON.stringify(body),
+			},
+		);
+	}
+
+	// M12 PR-5 — admin-only test chat (SSE). Yields parsed events from the
+	// backend's /api/v1/agents/{id}/test-chat endpoint. API key never leaves
+	// the server.
+	async *testChatAgent(
+		agentId: string,
+		text: string,
+		signal?: AbortSignal,
+	): AsyncGenerator<TestChatEvent> {
+		const token =
+			typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+			Accept: "text/event-stream",
+		};
+		if (token) headers["Authorization"] = `Bearer ${token}`;
+		const locale =
+			typeof window !== "undefined" ? window.localStorage.getItem("locale") : null;
+		if (locale) headers["Accept-Language"] = locale;
+
+		const resp = await fetch(`/api/v1/agents/${agentId}/test-chat`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ text }),
+			signal,
+		});
+		if (!resp.ok || !resp.body) {
+			throw new Error(`test-chat HTTP ${resp.status}`);
+		}
+		const reader = resp.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+		for (;;) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			let idx: number;
+			while ((idx = buffer.indexOf("\n\n")) !== -1) {
+				const raw = buffer.slice(0, idx);
+				buffer = buffer.slice(idx + 2);
+				const evt = parseSseEvent(raw);
+				if (evt) yield evt;
+			}
+		}
 	}
 
 	async updateAgent(agentId: string, updates: Partial<Agent>): Promise<Agent> {
@@ -1166,3 +1289,36 @@ class APIService {
 }
 
 export const api = new APIService();
+
+// M12 PR-5 — SSE event contract for test-chat (admin-only).
+export interface TestChatEvent {
+	event:
+		| "session_started"
+		| "message_delta"
+		| "message_complete"
+		| "agent_message"
+		| "error"
+		| "end";
+	data: Record<string, unknown>;
+}
+
+// Minimal SSE chunk → typed event parser used by api.testChatAgent().
+export function parseSseEvent(chunk: string): TestChatEvent | null {
+	const lines = chunk.split(/\r?\n/);
+	let eventName = "message";
+	let dataLine = "";
+	for (const line of lines) {
+		if (line.startsWith("event:")) {
+			eventName = line.slice(6).trim();
+		} else if (line.startsWith("data:")) {
+			dataLine += line.slice(5).trim();
+		}
+	}
+	if (!dataLine) return null;
+	try {
+		const data = JSON.parse(dataLine) as Record<string, unknown>;
+		return { event: eventName as TestChatEvent["event"], data };
+	} catch {
+		return { event: eventName as TestChatEvent["event"], data: { raw: dataLine } };
+	}
+}

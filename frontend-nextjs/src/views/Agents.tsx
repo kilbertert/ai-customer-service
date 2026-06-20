@@ -305,6 +305,20 @@ export default function Agents() {
 							{t("agents.open")}
 						</button>
 					)}
+					<button
+						data-testid="agents-open-wizard"
+						onClick={() => navigate("/agents/new")}
+						className="btn-primary"
+						style={{
+							padding: "var(--space-3) var(--space-4)",
+							borderRadius: "var(--radius-md)",
+							border: "none",
+							cursor: "pointer",
+							fontWeight: 600,
+						}}
+					>
+						+ {t("agents.create")}
+					</button>
 				</div>
 
 				{error && (

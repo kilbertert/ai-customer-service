@@ -196,8 +196,64 @@
     "difyStatusPublishedTooltip": "Workflow published; can be edited in Dify Studio",
     "difyStatusFailed": "⚠ Publish failed",
     "difyStatusFailedTooltip": "Publish failed; admin can retry in Dify Studio",
+    "difyStatusRegenerate": "Regenerate",
+    "difyStatusRegenerating": "Regenerating…",
+    "difyStatusUnknown": "Unknown",
     "difySectionTitle": "Dify integration",
     "difyOpenStudio": "Open in Dify Studio ↗"
+  },
+  "wizard": {
+    "title": "Create agent wizard",
+    "subtitle": "5 steps to scaffold a workflow-backed agent.",
+    "step1": "Basic info",
+    "step2": "Pick a template",
+    "step3": "Configure parameters",
+    "step4": "Review",
+    "step5": "Generate & confirm",
+    "next": "Next",
+    "back": "Back",
+    "cancel": "Cancel",
+    "submit": "Create agent",
+    "regenerate": "Regenerate",
+    "regenerating": "Generating...",
+    "noTemplates": "Templates unavailable. Pull-to-refresh.",
+    "templateCategory": {
+      "chat": "Chat",
+      "rag": "RAG",
+      "branching": "Branching",
+      "tool": "Tool"
+    },
+    "fields": {
+      "name": "Agent name",
+      "nameHint": "Visible to admins and visitors. 1-10 display units.",
+      "description": "Description",
+      "descriptionHint": "Optional. Up to 200 characters.",
+      "systemPrompt": "System prompt",
+      "userPromptTemplate": "User prompt template",
+      "modelName": "Model name",
+      "temperature": "Temperature",
+      "knowledgeBaseIds": "Knowledge base IDs",
+      "knowledgeBaseIdsHint": "Comma-separated. Leave blank if you only have one KB.",
+      "routerConditions": "Router conditions (one per line)",
+      "toolName": "Tool name",
+      "toolInputVars": "Tool input variables (JSON)"
+    },
+    "preview": {
+      "nodesTitle": "Nodes",
+      "edgesTitle": "Edges",
+      "ymlTitle": "YAML preview",
+      "nodeCount": "{{count}} nodes",
+      "renderError": "Failed to generate workflow. Please try again."
+    },
+    "errors": {
+      "loadTemplates": "Could not load templates.",
+      "loadPreview": "Could not generate preview.",
+      "createAgent": "Could not create agent.",
+      "nameRequired": "Agent name is required.",
+      "systemPromptRequired": "System prompt is required.",
+      "paramsInvalid": "Some parameters are invalid.",
+      "noTemplateSelected": "Select a template first."
+    }
   },
   "placeholders": {
     "enterMessage": "Enter message...",
@@ -748,5 +804,16 @@
     "batchSize": "Batch Size",
     "manageUrlsDesc": "Manage website knowledge sources, add and crawl web content",
     "manageFilesDesc": "Upload and manage files, supports PDF, TXT, CSV and more"
+  },
+  "agentTest": {
+    "loading": "Loading…",
+    "noDescription": "(no description)",
+    "loadError": "Load failed: {{error}}",
+    "backToList": "Back to list",
+    "emptyState": "Type a message above to start testing",
+    "inputPlaceholder": "Type a message…",
+    "send": "Send",
+    "sending": "Sending…",
+    "error": "Error: {{error}}"
   }
 }
