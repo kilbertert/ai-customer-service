@@ -141,10 +141,11 @@ temp/
 /uploads/
 /files/
 
-# 临时和测试文件
-*_test.py
-test_*.py
-init_test.py
+# 临时和测试文件 — 仅仓库根目录 (避免误伤 backend/tests/ 等正经测试)
+# M15 修复: 加 / 前缀, 只匹配根目录的 scratch 文件
+/test_*.py
+/*_test.py
+/init_test.py
 *_old.py
 *_old_*.py
 *_new.py
@@ -154,15 +155,11 @@ init_test.py
 !backend/tests/test_*.py
 !backend/tests/*_test.py
 !backend/tests/init_test.py
-!backend/tests/*/test_*.py
-!backend/tests/*/*_test.py
 !backend/tests/legacy/test_*.py
 !backend/tests/m11/test_*.py
 !china_charge_kf/backend/tests/test_*.py
 !china_charge_kf/backend/tests/*_test.py
 !china_charge_kf/backend/tests/init_test.py
-!china_charge_kf/backend/tests/*/test_*.py
-!china_charge_kf/backend/tests/*/*_test.py
 
 # OS生成的文件
 .Spotlight-V100
