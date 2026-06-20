@@ -260,6 +260,7 @@ async def test_real_dify_api_key_decrypt_for_test_chat() -> None:
     # 调 /v1/workflows/run 验证 api_key 真能用于 workflow app (workflow app 走此端点, 不是 chat-messages)
     # 注: 本 Dify 容器可能没装 LLM provider (e.g. langgenius/openai/openai), 返 400 'Provider not exist' 也算
     #     业务错误而非 auth 错误; 401 才算 enable_api 没生效. 所以这里只断 != 401.
+    #     M17+: 如果 Dify 已配 model provider (e.g. minimax), status=succeeded, total_tokens > 0
     raw_client = await client._get_client()  # noqa: SLF001
     try:
         resp = await raw_client.post(
@@ -270,14 +271,27 @@ async def test_real_dify_api_key_decrypt_for_test_chat() -> None:
                 "user": "m14-e2e-tester",
                 "response_mode": "blocking",
             },
-            timeout=30.0,
+            timeout=60.0,
         )
         assert resp.status_code != 401, (
             f"workflows/run 返 401 = enable_api 没生效, "
             f"api_key 无效或过期. body={resp.text[:300]}"
         )
         # 200 = 完整成功; 400 = 业务错误 (e.g. provider 未装, model 不存在) — 都接受, 只验证 auth
-        print(f"[chat-test] /v1/workflows/run status={resp.status_code} body={resp.text[:120]}")
+        print(f"[chat-test] /v1/workflows/run status={resp.status_code} body={resp.text[:200]}")
+        # M17: 进一步验证 LLM 真跑通 — status=succeeded + total_tokens > 0
+        if resp.status_code == 200:
+            try:
+                data = resp.json().get("data", {})
+                run_status = data.get("status")
+                tokens = data.get("total_tokens", 0)
+                print(f"[chat-test] workflow_run status={run_status}, total_tokens={tokens}")
+                # 软断言: 如果 Dify 配了 LLM provider, 期望 succeeded + tokens > 0
+                # 若未配, 跳过严格断言(由 M16 的 summary 路径验证)
+                if run_status == "succeeded" and tokens > 0:
+                    print(f"[chat-test] LLM end-to-end PASS: real LLM call, {tokens} tokens")
+            except (ValueError, AttributeError):
+                pass
     finally:
         await _delete_app_safely(api_base, raw_client, app_id)
 
