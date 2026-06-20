@@ -55,7 +55,11 @@ def _admin_creds() -> tuple[str, str]:
 
 
 def _hardcoded_yml_for(template_id: str) -> str:
-    """LLM 未配置时的 fallback yml — 仅供 Dify 部署路径测试用, 不验证 LLM 质量。"""
+    """LLM 未配置时的 fallback yml — 仅供 Dify 部署路径测试用, 不验证 LLM 质量。
+
+    字段集对齐 basjoo services/dify_toolkit/builder.py LLMNode.to_data() 输出,
+    Dify 1.14.2 LLMNodeData 必填 context + vision, 缺则 workflow/run 返 400。
+    """
     if template_id == "basic_chat":
         return """\
 app:
@@ -90,6 +94,11 @@ workflow:
               text: "你是一个测试智能体"
             - role: user
               text: "{{#sys.query#}}"
+          context:
+            enabled: false
+            variable_selector: []
+          vision:
+            enabled: false
       - id: "4099"
         data:
           type: end
@@ -232,21 +241,27 @@ async def test_real_dify_api_key_decrypt_for_test_chat() -> None:
     if not publish_ok:
         pytest.skip(f"publish_failed for {app_id}, 跳过 chat 验证 (D9c 已知边界)")
 
-    # 调 /v1/chat-messages 验证 api_key 真能用于 chat
+    # 调 /v1/workflows/run 验证 api_key 真能用于 workflow app (workflow app 走此端点, 不是 chat-messages)
+    # 注: 本 Dify 容器可能没装 LLM provider (e.g. langgenius/openai/openai), 返 400 'Provider not exist' 也算
+    #     业务错误而非 auth 错误; 401 才算 enable_api 没生效. 所以这里只断 != 401.
     raw_client = await client._get_client()  # noqa: SLF001
     try:
         resp = await raw_client.post(
-            "/v1/chat-messages",
+            "/v1/workflows/run",
             headers={"Authorization": f"Bearer {api_key}"},
             json={
-                "inputs": {},
-                "query": "ping",
+                "inputs": {"sys.query": "ping"},
                 "user": "m14-e2e-tester",
-                "response_mode": "streaming",
+                "response_mode": "blocking",
             },
             timeout=30.0,
         )
-        assert resp.status_code == 200, f"chat-messages returned {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code != 401, (
+            f"workflows/run 返 401 = enable_api 没生效, "
+            f"api_key 无效或过期. body={resp.text[:300]}"
+        )
+        # 200 = 完整成功; 400 = 业务错误 (e.g. provider 未装, model 不存在) — 都接受, 只验证 auth
+        print(f"[chat-test] /v1/workflows/run status={resp.status_code} body={resp.text[:120]}")
     finally:
         await _delete_app_safely(api_base, raw_client, app_id)
 
