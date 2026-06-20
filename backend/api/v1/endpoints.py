@@ -69,6 +69,16 @@ from api.v1.schemas import (
     AgentCreateRequest,
     AgentListResponse,
     AgentUpdateRequest,
+    TemplateListResponse,
+    TemplateMetaResponse,
+    WorkflowPreviewRequest,
+    WorkflowPreviewResponse,
+    TestChatRequest,
+    TestChatEvent,
+    RegenerateWorkflowRequest,
+    RegenerateWorkflowResponse,
+    GenerationHistoryEntry,
+    GenerationHistoryResponse,
     AgentMemberCreateRequest,
     AgentMemberItem,
     AgentMemberListResponse,
@@ -117,6 +127,12 @@ from services.dify_toolkit import (
     Deployer,
     DifyPublishError,
     DifySchemaError,
+)
+from services.dify_toolkit.templates import TEMPLATES, TEMPLATES_BY_ID
+from services.rate_limit import (
+    check_preview_limit,
+    check_regenerate_limit,
+    reset_all_limits,
 )
 from middleware import get_request_client_ip
 from api.v1.sse_utils import sse_event
@@ -304,6 +320,14 @@ def build_agent_config(agent: Agent) -> dict:
         "active_session_count": 0,
         "created_at": agent.created_at,
         "updated_at": agent.updated_at,
+        # M12 PR-3 — wizard 元数据透传(从 provider_config JSON 字段读)。
+        # 老 agent 没有这两键 → None,前端 wizard 完成页不显示模板徽标。
+        "template_id": (agent.provider_config or {}).get("template_id"),
+        "template_params": (agent.provider_config or {}).get("template_params"),
+        # M12 PR-4 — DSLGenerator 运行元数据(attempt/tokens)。优先读独立列,
+        # 兜底读 provider_config(双写场景)。
+        "dify_generation_meta": agent.dify_generation_meta
+        or (agent.provider_config or {}).get("dify_generation_meta"),
     }
 
 
@@ -2076,6 +2100,10 @@ async def _provision_dify_app(agent: Agent, workspace: Workspace) -> None:
     写 agent.dify_app_id / dify_workflow_id / dify_api_key / dify_publish_status。
     失败 raise HTTPException(400/502);不 commit / 不 rollback — 由调用方负责。
     Plan B 模式 (dify_enabled=False) → 静默 no-op,保留 agent.dify_app_id=NULL。
+
+    M12 PR-4: 若 agent.provider_config 含 template_id + template_params,
+    走 DSLGenerator → graph → create_app_and_workflow(graph=...)。
+    若无 template_id → 走 PR-0 最小 Start+End 模板(graph=None)。
     """
     if not workspace.dify_enabled:
         return  # Plan B 模式,保持 dify_app_id=NULL
@@ -2087,14 +2115,72 @@ async def _provision_dify_app(agent: Agent, workspace: Workspace) -> None:
                 "Set workspace.dify_admin_email + workspace.dify_admin_password_ref."
             ),
         )
+
+    # M12 PR-4: DSLGenerator wiring (若 wizard 给了 template_id)
+    graph: dict | None = None
+    generation_meta: dict[str, Any] | None = None
+    provider_cfg = agent.provider_config or {}
+    template_id = provider_cfg.get("template_id")
+    template_params = provider_cfg.get("template_params") or {}
+    user_requirements = provider_cfg.get("user_requirements") or ""
+
+    if template_id:
+        try:
+            from services.dify_toolkit.dsl_generator import (
+                DSLGenerationError,
+                DSLGenerator,
+            )
+            from services.llm_integration.minimax_client import minimax_call
+        except ImportError as e:
+            logger.error("DSLGenerator or minimax_client not importable: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "LLM-backed workflow generation is not available in this build. "
+                    "Provide params_overrides to bypass LLM generation."
+                ),
+            )
+
+        generator = DSLGenerator(llm_caller=minimax_call)
+        try:
+            yml_text, generation_meta = await generator.generate(
+                template_id=template_id,
+                user_input={
+                    "user_requirements": user_requirements,
+                    "params_overrides": template_params,
+                },
+            )
+        except DSLGenerationError as e:
+            logger.error(
+                "DSL generation failed for agent %s template=%s: %s",
+                agent.id, template_id, e,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"DSL generation failed: {e}",
+            ) from e
+
+        import yaml as _yaml
+        try:
+            wf_dict = _yaml.safe_load(yml_text)
+            graph = wf_dict["workflow"]["graph"]
+        except Exception as e:
+            logger.error("Generated yml failed to parse to graph: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"DSL yml parse failed: {e}",
+            ) from e
+
     try:
         dify = DifyAdminClient.from_workspace(workspace)
         # Step 1+2: 2-step create app + workflow (D3 课程修正)
         #   step 2 失败时 DifyAdminClient 内部已调 DELETE /apps/{id} 回滚 (D2 守门)
+        # M12 PR-4: 传 graph 参数(模板生成的图)或 None(PR-0 最小图回退)
         create_result = await dify.create_app_and_workflow(
             name=agent.name,
             description=agent.description or "",
             mode="workflow",
+            graph=graph,
         )
         agent.dify_app_id = create_result["app_id"]
         agent.dify_workflow_id = create_result["workflow_id"]
@@ -2111,6 +2197,15 @@ async def _provision_dify_app(agent: Agent, workspace: Workspace) -> None:
                 "Dify workflow publish failed (likely empty graph validation). "
                 "Admin can retry publish in Dify UI."
             )
+
+        # M12 PR-4: 保存生成元数据(attempt 数 + MiniMax tokens)给 PR-8 cost tracking
+        if generation_meta is not None:
+            # 合并到现有 provider_config,保留 wizard 已写的 template_id/template_params
+            new_cfg = dict(provider_cfg)
+            new_cfg["dify_generation_meta"] = generation_meta
+            agent.provider_config = new_cfg
+            # 同时写到独立列(plan §3 PR-4 规范字段,便于 SQL 查询)
+            agent.dify_generation_meta = generation_meta
     except (DifyConfigError, DifyAuthError, DifyUpstreamError, httpx.HTTPError) as e:
         # M10+2 D2: 系统故障 (5xx / 网络错 / auth 错)
         # DifyAdminClient 内部 _delete_app 已清理 Dify App
@@ -2307,6 +2402,151 @@ async def deploy_agent_workflow(
     )
 
 
+# ── M12 PR-3 — Workflow templates / preview ───────────────────────────────
+
+
+@router.get("/workflows/templates", response_model=TemplateListResponse)
+async def list_workflow_templates(
+    current_user: AdminUser = Depends(get_current_admin),
+):
+    """M12 PR-3 — 列出所有可用的工作流模板(4 个 MVP)。
+
+    - 公开元数据(id/name/description/category/min_dify_version/yml_preview)
+    - params_schema_json: 模板 params 的 Pydantic JSON Schema,
+      前端 step 3 用它动态渲染表单。
+    - 无 DB 写入,纯模板注册表透传。
+    """
+    items = [TemplateMetaResponse(**t.to_metadata()) for t in TEMPLATES]
+    return TemplateListResponse(templates=items, total=len(items))
+
+
+async def _preview_llm_caller(
+    system: str,
+    user: str,
+    few_shot: list[dict[str, str]],
+    json_mode: bool = True,
+) -> dict[str, Any]:
+    """M12 PR-3 — preview 端点的轻量 LLM 调用器。
+
+    优先尝试 lazy-import 兄弟模块 minimax_client(PR-2 即将提交),若不可用
+    则降级:无 params_overrides 时直接返空 params 字典 + 警告,提示前端走
+    params_overrides 路径。这保证 PR-2 minimax_client 合并前,wizard 也能跑通
+    "用户填好 params → 直传 → preview"的零依赖路径。
+    """
+    try:
+        from services.dify_toolkit import minimax_client  # type: ignore[import-not-found]
+    except ImportError:
+        minimax_client = None
+
+    if minimax_client is not None and hasattr(minimax_client, "call"):
+        try:
+            return await minimax_client.call(  # type: ignore[attr-defined]
+                system=system,
+                user=user,
+                few_shot=few_shot,
+                json_mode=json_mode,
+            )
+        except Exception as e:
+            logger.warning("minimax_client.call failed in preview: %s", e)
+
+    # PR-2 minimax_client 不可用时的降级:返回一个默认 params dict,模板 schema
+    # 校验会拒绝,所以这个 dict 几乎必然会让 Pydantic 验证失败,触发 502。
+    # Wizard 此时应回退到用户手动填 params_overrides 的路径。
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=(
+            "LLM-backed preview is not available in this build. "
+            "Use params_overrides to bypass LLM generation."
+        ),
+    )
+
+
+@router.post("/workflows/preview", response_model=WorkflowPreviewResponse)
+async def preview_workflow(
+    request: WorkflowPreviewRequest,
+    current_user: AdminUser = Depends(get_current_admin),
+):
+    """M12 PR-3 — 生成工作流 YAML 预览(无副作用,不部署)。
+
+    - template_id: 必填,对应 Template.id,未知 → 404
+    - user_requirements: 自然语言需求,透传给 DSLGenerator
+    - params_overrides: 显式参数覆盖 — 走"直传"路径,不调 LLM
+
+    返 yml_text + node_count + attempt_count 给前端 step 4 展示。
+
+    M12 PR-8: 10/min/workspace rate limit。
+    """
+    if not check_preview_limit(workspace_id=current_user.workspace_id):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="preview rate limit exceeded (10/min/workspace)",
+        )
+    template = TEMPLATES_BY_ID.get(request.template_id)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"unknown template_id: {request.template_id!r}; "
+                f"valid options: {sorted(TEMPLATES_BY_ID.keys())}"
+            ),
+        )
+
+    # 优先用 params_overrides 直传(无 LLM 调用,确定性高,前端 step 3 → 4 默认路径)
+    if request.params_overrides:
+        try:
+            params = template.params_schema.model_validate(request.params_overrides)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"params_overrides failed validation: {e}",
+            )
+        wf = template.to_workflow(params)
+        yml_text = wf.to_yaml()
+        return WorkflowPreviewResponse(
+            yml_text=yml_text,
+            node_count=len(wf._nodes),
+            attempt_count=1,
+        )
+
+    # 走 LLM 生成路径(PR-2 DSLGenerator + minimax_client 必须可用)
+    try:
+        from services.dify_toolkit.dsl_generator import (
+            DSLGenerationError,
+            DSLGenerator,
+        )
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "DSLGenerator not available; provide params_overrides to bypass "
+                "LLM generation."
+            ),
+        )
+
+    generator = DSLGenerator(llm_caller=_preview_llm_caller)
+    user_input: dict[str, Any] = {
+        "user_requirements": request.user_requirements or "",
+    }
+    try:
+        yml_text, metadata = await generator.generate(
+            template_id=request.template_id,
+            user_input=user_input,
+        )
+    except DSLGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"DSL generation failed: {e}",
+        )
+
+    # 简单从 yml 文本里数顶层 data 节点 — Workflow.to_yaml 输出格式固定
+    node_count = yml_text.count("\n    - data:")
+    return WorkflowPreviewResponse(
+        yml_text=yml_text,
+        node_count=node_count,
+        attempt_count=int(metadata.get("attempt", 1)),
+    )
+
+
 @router.post("/agents", response_model=AgentConfig, status_code=status.HTTP_201_CREATED)
 async def create_agent(
     request: AgentCreateRequest,
@@ -2367,6 +2607,17 @@ async def create_agent(
     if not system_prompt:
         system_prompt = "You are a helpful AI assistant."
 
+    # M12 PR-3 — wizard 元数据写入 provider_config(JSON 字段,无需迁移)。
+    # 老 API 路径(无 template_id) → provider_config 保持 None,向后兼容。
+    provider_config: dict[str, Any] | None = None
+    if request.template_id:
+        provider_config = {
+            "template_id": request.template_id,
+            "template_params": request.template_params or {},
+        }
+        if request.user_requirements:
+            provider_config["user_requirements"] = request.user_requirements
+
     agent = Agent(
         workspace_id=current_user.workspace_id,
         name=request.name,
@@ -2386,6 +2637,7 @@ async def create_agent(
         widget_title=request.widget_title or request.name,
         welcome_message=request.welcome_message
         or "您好！我是Basjoo助手，有什么可以帮您的吗？",
+        provider_config=provider_config,
     )
     if settings.deepseek_api_key:
         agent.api_key = encrypt_api_key(settings.deepseek_api_key)
@@ -4627,3 +4879,283 @@ async def admin_websocket(websocket: WebSocket):
         manager.disconnect(websocket)
     except Exception:
         manager.disconnect(websocket)
+
+
+# ── M12 PR-5 — Agent test page (admin SSE chat) ──────────────────────────
+
+
+@router.post("/agents/{agent_id}/test-chat")
+async def test_chat_agent(
+    agent_id: str,
+    request: TestChatRequest,
+    current_user: AdminUser = Depends(require_admin_or_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M12 PR-5 — Admin-only SSE endpoint to test a single agent's chat.
+
+    Decrypts ``agent.dify_api_key`` server-side (admin never sees the cleartext)
+    and proxies ``DifyProvider.stream_chat`` to a synthetic visitor id
+    (``admin-test-{admin_id}``) so test traffic stays out of real visitor
+    session tables.
+
+    Returns a streaming response with the standard basjoo SSE event sequence:
+    session_started → message_delta(s) → message_complete → end.
+    """
+    from services.dify.provider import DifyProvider
+
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"agent {agent_id!r} not found",
+        )
+    if agent.dify_app_id is None or agent.dify_workflow_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"agent {agent_id!r} is not bound to a Dify workflow. "
+                "Run the wizard (POST /agents with template_id) or activate "
+                "Dify first."
+            ),
+        )
+
+    workspace_result = await db.execute(
+        select(Workspace).where(Workspace.id == agent.workspace_id)
+    )
+    workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"workspace {agent.workspace_id} not found for agent {agent_id!r}",
+        )
+
+    session_public_id = (
+        request.session_public_id
+        or f"admin-test-{current_user.id}-{secrets.token_urlsafe(8)}"
+    )
+
+    provider = DifyProvider(
+        workspace=workspace,
+        agent=agent,
+        visitor_id=f"admin-test-{current_user.id}",
+    )
+
+    async def _gen() -> AsyncIterator[bytes]:
+        try:
+            async for chunk in provider.stream_chat(
+                text=request.text,
+                language=request.language,
+                session_public_id=session_public_id,
+            ):
+                yield chunk
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "test-chat SSE failed for agent %s: %s: %s",
+                agent.id, type(e).__name__, e,
+            )
+            yield sse_event(
+                "error",
+                {"message": f"test-chat failed: {e}", "agent_id": agent.id},
+            )
+            yield sse_event("end", {"agent_id": agent.id})
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── M12 PR-6 — Regenerate workflow (same app_id) ─────────────────────────
+
+
+@router.post(
+    "/agents/{agent_id}/regenerate-workflow",
+    response_model=RegenerateWorkflowResponse,
+)
+async def regenerate_agent_workflow(
+    agent_id: str,
+    request: RegenerateWorkflowRequest,
+    current_user: AdminUser = Depends(require_admin_or_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M12 PR-6 — 重新生成 agent 的 Dify workflow 并部署到同一 app_id。
+
+    与首次 wizard 创建的区别:
+      - 不创建新 Dify App,直接覆盖现有 ``Agent.dify_app_id`` 下的 workflow
+      - 复用 ``DSLGenerator(llm_caller=minimax_call)`` + ``Deployer``
+      - 更新 ``agent.template_id`` / ``template_params`` / ``dify_generation_meta``
+
+    Body 字段可选 — 不传则用 agent 已存的值。允许 admin 切换模板或调整
+    params 后重生成(G3 plan §3 PR-6)。
+
+    M12 PR-8: 10/min/workspace rate limit。
+    """
+    import uuid
+
+    from services.dify_toolkit.deployer import Deployer
+    from services.dify_toolkit.dsl_generator import DSLGenerationError, DSLGenerator
+    from services.llm_integration.minimax_client import minimax_call
+
+    if not check_regenerate_limit(workspace_id=current_user.workspace_id):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="regenerate-workflow rate limit exceeded (10/min/workspace)",
+        )
+
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"agent {agent_id!r} not found",
+        )
+    if agent.dify_app_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"agent {agent_id!r} has no Dify app to regenerate. "
+                "Run the wizard first (POST /agents with template_id)."
+            ),
+        )
+
+    workspace_result = await db.execute(
+        select(Workspace).where(Workspace.id == agent.workspace_id)
+    )
+    workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"workspace {agent.workspace_id} not found for agent {agent_id!r}",
+        )
+
+    # 合并新覆盖值与 agent 已存值
+    provider_cfg = agent.provider_config or {}
+    template_id = request.template_id or provider_cfg.get("template_id")
+    template_params = request.template_params or provider_cfg.get("template_params") or {}
+    user_requirements = (
+        request.user_requirements or provider_cfg.get("user_requirements") or ""
+    )
+    if not template_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"agent {agent_id!r} has no template_id (stored or in request). "
+                "Provide template_id in the body to regenerate."
+            ),
+        )
+
+    # 1. 重新生成 DSL
+    generator = DSLGenerator(llm_caller=minimax_call)
+    try:
+        yml_text, generation_meta = await generator.generate(
+            template_id=template_id,
+            user_input={
+                "user_requirements": user_requirements,
+                "params_overrides": template_params,
+            },
+        )
+    except DSLGenerationError as e:
+        logger.error(
+            "regenerate-workflow DSL fail for agent %s template=%s: %s",
+            agent.id, template_id, e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"DSL generation failed: {e}",
+        ) from e
+
+    # 2. 部署到同一 app_id(覆盖现有 workflow)
+    deployer = Deployer.from_workspace(workspace)
+    correlation_id = str(uuid.uuid4())
+    try:
+        result = await deployer.deploy(
+            yml=yml_text,
+            app_id=agent.dify_app_id,
+            actor_user_id=current_user.id,
+            correlation_id=correlation_id,
+            db_session=db,
+            tenant_id_for_audit=str(workspace.id),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.error(
+            "regenerate-workflow deploy fail for agent %s: %s: %s",
+            agent.id, type(e).__name__, e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Dify deploy failed: {e}",
+        ) from e
+
+    # 3. 更新 agent 元数据
+    new_cfg = dict(provider_cfg)
+    new_cfg["template_id"] = template_id
+    new_cfg["template_params"] = template_params
+    if user_requirements:
+        new_cfg["user_requirements"] = user_requirements
+    new_cfg["dify_generation_meta"] = generation_meta
+    agent.provider_config = new_cfg
+    agent.template_id = template_id
+    agent.template_params = template_params
+    agent.dify_generation_meta = generation_meta
+    # agent.dify_workflow_id is preserved from the original deploy — DeployResult
+    # doesn't expose a fresh workflow_id (deploy overwrites the existing draft).
+
+    await db.commit()
+
+    return RegenerateWorkflowResponse(
+        deployed=result.deployed,
+        app_id=agent.dify_app_id,
+        workflow_id=agent.dify_workflow_id,
+        rows_updated=result.rows_updated,
+        attempt=int(generation_meta.get("attempt", 1)),
+        generation_meta=generation_meta,
+    )
+
+
+# ── M12 PR-8 — Generation history (cost tracking) ───────────────────────
+
+
+@router.get(
+    "/agents/{agent_id}/generation-history",
+    response_model=GenerationHistoryResponse,
+)
+async def get_agent_generation_history(
+    agent_id: str,
+    current_user: AdminUser = Depends(require_admin_or_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M12 PR-8 — 返 agent 的 DSLGenerator 历次生成记录。
+
+    Source: ``agent.dify_generation_meta``(PR-4 加的 JSON 列) + 每次
+    regenerate 写入的 provider_config 副本。当前实现:返当前 meta 数组
+    (单条),未来扩展为 audit_logs.history 即可。
+    """
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"agent {agent_id!r} not found",
+        )
+
+    history: list[GenerationHistoryEntry] = []
+    meta = agent.dify_generation_meta
+    if isinstance(meta, dict):
+        provider_cfg = agent.provider_config or {}
+        history.append(
+            GenerationHistoryEntry(
+                timestamp=None,
+                attempt=int(meta.get("attempt", 1)),
+                params=meta.get("params") or {},
+                usage=meta.get("usage") or {},
+                template_id=provider_cfg.get("template_id"),
+                user_requirements=provider_cfg.get("user_requirements"),
+            )
+        )
+
+    return GenerationHistoryResponse(agent_id=agent_id, total=len(history), history=history)

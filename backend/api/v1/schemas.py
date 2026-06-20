@@ -522,6 +522,20 @@ class AgentConfig(BaseModel):
     updated_at: Optional[datetime] = None
     kb_id: Optional[str] = Field(None, description="Bound knowledge base ID (optional)")
 
+    # M12 PR-3 — wizard 创建后回显用,暴露 template_id + template_params 让前端
+    # 完成页可以确认用户选的模板。两者均 nullable — 老 API 路径或非 wizard 创建
+    # 的 agent 不会有这些值。
+    template_id: Optional[str] = Field(
+        None, description="M12 PR-3 wizard 选的 workflow 模板 id"
+    )
+    template_params: Optional[Dict[str, Any]] = Field(
+        None, description="M12 PR-3 wizard 填的模板参数(已通过 Pydantic schema 校验)"
+    )
+    # M12 PR-4 — 暴露 DSLGenerator 元数据(attempt 数、tokens、latency)给 PR-8 成本跟踪用。
+    dify_generation_meta: Optional[Dict[str, Any]] = Field(
+        None, description="M12 PR-4 DSLGenerator 运行元数据: {attempt, params, usage}"
+    )
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -675,27 +689,6 @@ def _validate_agent_name(value: Any) -> Any:
             "(10 ASCII characters or 5 Chinese characters)"
         )
     return stripped
-
-
-class AgentCreateRequest(BaseModel):
-    """创建Agent请求"""
-
-    name: str = Field(..., min_length=1, max_length=10)
-    description: str | None = Field(None, max_length=200)
-    agent_type: Literal["website_support", "ai_clone", "sales_outreach", "custom"] = (
-        "website_support"
-    )
-    channel_mode: Literal["web_widget", "whatsapp", "email", "custom"] = "web_widget"
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def validate_name(cls, value: Any) -> Any:
-        return _validate_agent_name(value)
-
-    system_prompt: str | None = Field(None, min_length=1)
-    persona_type: str | None = "general"
-    widget_title: str | None = Field(None, max_length=100)
-    welcome_message: str | None = None
 
 
 class AgentListResponse(BaseModel):
@@ -955,3 +948,166 @@ class WorkspaceConfigResponse(BaseModel):
     dify_enabled: bool
     dify_api_base: Optional[str] = None
     dify_admin_configured: bool
+
+
+# ========== M12 PR-3 — Workflow Template / Preview Schemas ==========
+
+
+class TemplateMetaResponse(BaseModel):
+    """M12 PR-3 — GET /api/v1/workflows/templates 单条模板元数据响应。
+
+    字段全部从 ``services.dify_toolkit.templates._common.Template.to_metadata()``
+    透传,仅暴露给前端 wizard 用的字段(不含 ``to_workflow`` callable)。
+
+    - id: 模板唯一标识,供 step 2 卡片选中态 + step 3 动态表单挂载
+    - name: 中文显示名(前端直接展示,无需 i18n 二次翻译)
+    - description: 场景说明,step 2 卡片副标题
+    - category: chat / rag / branching / tool,前端可分类着色
+    - params_schema_json: 模板 params 的 Pydantic JSON Schema,供 step 3 动态表单渲染
+    - yml_preview: 模板样例 yml 文本片段(占位符未填充),step 4 预览
+    """
+
+    id: str
+    name: str
+    description: str
+    category: str
+    min_dify_version: str
+    params_schema_json: Dict[str, Any]
+    yml_preview: str
+
+
+class TemplateListResponse(BaseModel):
+    """M12 PR-3 — GET /api/v1/workflows/templates 列表响应。"""
+
+    templates: list[TemplateMetaResponse]
+    total: int
+
+
+class WorkflowPreviewRequest(BaseModel):
+    """M12 PR-3 — POST /api/v1/workflows/preview 请求体。
+
+    - template_id: 必填,对应 Template.id
+    - user_requirements: 自由文本,LLM 生成 params 时参考的场景描述(可空)
+    - params_overrides: 显式指定参数(跳过 LLM 生成,用于 step 3 → step 4 直传)
+    """
+
+    template_id: str = Field(..., min_length=1)
+    user_requirements: Optional[str] = Field(None, max_length=2000)
+    params_overrides: Optional[Dict[str, Any]] = None
+
+
+class WorkflowPreviewResponse(BaseModel):
+    """M12 PR-3 — POST /api/v1/workflows/preview 响应。
+
+    - yml_text: 已生成的工作流 YAML 文本
+    - node_count: 顶层节点数(粗校验,跟 Dify deploy 节点数对得上)
+    - attempt_count: DSLGenerator 内部尝试次数(1 = 直传,>1 = LLM 重试)
+    """
+
+    yml_text: str
+    node_count: int
+    attempt_count: int
+
+
+# ── M12 PR-3 — 扩展 AgentCreateRequest,接 wizard ───────────────────────────
+# 在已有 AgentCreateRequest 上追加 3 个可选字段,保持向后兼容(老调用方零影响)。
+# 同时 AgentConfig 暴露 template_id 字段供前端 wizard 完成页确认用。
+class AgentCreateRequest(BaseModel):
+    """创建Agent请求"""
+
+    name: str = Field(..., min_length=1, max_length=10)
+    description: str | None = Field(None, max_length=200)
+    agent_type: Literal["website_support", "ai_clone", "sales_outreach", "custom"] = (
+        "website_support"
+    )
+    channel_mode: Literal["web_widget", "whatsapp", "email", "custom"] = "web_widget"
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def validate_name(cls, value: Any) -> Any:
+        return _validate_agent_name(value)
+
+    system_prompt: str | None = Field(None, min_length=1)
+    persona_type: str | None = "general"
+    widget_title: str | None = Field(None, max_length=100)
+    welcome_message: str | None = None
+
+    # M12 PR-3 — wizard 入口新增 3 个可选字段,全部可选(老 API 路径不受影响)。
+    # - template_id: 对应 services.dify_toolkit.templates 中的 Template.id
+    # - template_params: 经 Pydantic 校验过的 params(dict,前端不做服务端 schema 校验)
+    # - user_requirements: 自然语言需求,PR-2 DSLGenerator 透传给 LLM
+    template_id: Optional[str] = Field(None, min_length=1, max_length=64)
+    template_params: Optional[Dict[str, Any]] = None
+    user_requirements: Optional[str] = Field(None, max_length=2000)
+
+
+# ── M12 PR-5 — Agent test-page SSE chat ──────────────────────────────────
+
+
+class TestChatRequest(BaseModel):
+    """POST /agents/{id}/test-chat 的请求体。"""
+
+    text: str = Field(..., min_length=1, max_length=4000, description="user message")
+    language: Optional[str] = Field(None, description="locale code, e.g. zh-CN")
+    session_public_id: Optional[str] = Field(
+        None, description="reuse a previous test session id; if omitted a new one is generated"
+    )
+
+
+class TestChatEvent(BaseModel):
+    """SSE 事件载荷(流式)。"""
+
+    event: str  # "session_started" | "message_delta" | "message_complete" | "error" | "end"
+    data: Dict[str, Any]
+
+
+# ── M12 PR-6 — Regenerate workflow ────────────────────────────────────────
+
+
+class RegenerateWorkflowRequest(BaseModel):
+    """POST /agents/{id}/regenerate-workflow 请求体。
+
+    所有字段均可选 — 不传则复用 ``agent.template_id`` / ``template_params`` /
+    ``user_requirements``(来自 wizard 首次创建)。允许 admin 用同一 agent
+    切换到不同模板,或调整 params 后重生成。
+    """
+
+    template_id: Optional[str] = Field(None, min_length=1, max_length=64)
+    template_params: Optional[Dict[str, Any]] = None
+    user_requirements: Optional[str] = Field(None, max_length=2000)
+
+
+class RegenerateWorkflowResponse(BaseModel):
+    """POST /agents/{id}/regenerate-workflow 响应。"""
+
+    deployed: bool
+    app_id: str
+    workflow_id: Optional[str] = None
+    rows_updated: int = 0
+    attempt: int = 1
+    generation_meta: Dict[str, Any]
+
+
+# ── M12 PR-8 — Cost tracking & rate limiting ────────────────────────────
+
+
+class GenerationHistoryEntry(BaseModel):
+    """单次生成记录(GET /agents/{id}/generation-history 数组元素)。"""
+
+    timestamp: Optional[str] = Field(None, description="ISO 8601 (UTC) of the generation run")
+    attempt: int = 1
+    params: Dict[str, Any] = Field(default_factory=dict)
+    usage: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="MiniMax token usage: prompt_tokens / completion_tokens / total_tokens",
+    )
+    template_id: Optional[str] = None
+    user_requirements: Optional[str] = None
+
+
+class GenerationHistoryResponse(BaseModel):
+    """GET /agents/{id}/generation-history 响应。"""
+
+    agent_id: str
+    total: int
+    history: list[GenerationHistoryEntry]

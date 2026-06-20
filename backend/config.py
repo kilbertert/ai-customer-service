@@ -113,6 +113,14 @@ class Settings(BaseSettings):
     # DeepSeek API (optional - can be set per-agent in dashboard)
     deepseek_api_key: str = ""
 
+    # MiniMax API (used by M12 PR-2 DSL generator for pre-Agent workflow synthesis).
+    # Endpoint defaults to the Chinese regional URL chosen by the project owner
+    # (2026-06-19); override via MINIMAX_API_BASE env var for a different region.
+    minimax_api_key: str = ""
+    minimax_model: str = "MiniMax-Text-01"
+    minimax_api_base: str = "https://api.MiniMax.cn"
+    minimax_timeout_seconds: float = 30.0
+
     # Jina Embedding API
     jina_embedding_api_base: str = "https://api.jina.ai/v1/embeddings"
 

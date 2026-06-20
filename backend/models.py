@@ -291,6 +291,15 @@ class Agent(Base):
     )
     dify_publish_error = Column(Text, nullable=True)  # publish 失败时的错误信息
 
+    # M12 PR-4 — wizard 创建路径新增 3 字段。
+    # 老 agent (NULL template_id) 走 PR-0 最小图回退;新 agent 经 wizard 走 PR-2 DSLGenerator。
+    # - template_id: 关联 services.dify_toolkit.templates.Template.id (basic_chat/rag_qa/...)
+    # - template_params: Pydantic 校验过的 params dict, 用于 PR-6 regenerate 复用
+    # - dify_generation_meta: 存 {attempt, params, usage}, 给 PR-8 cost tracking 用
+    template_id = Column(String(64), nullable=True)
+    template_params = Column(JSON, nullable=True)
+    dify_generation_meta = Column(JSON, nullable=True)
+
     # 关系
     workspace = relationship("Workspace", back_populates="agents")
     url_sources = relationship(

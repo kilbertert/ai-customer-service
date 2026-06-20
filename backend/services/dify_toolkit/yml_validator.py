@@ -95,11 +95,26 @@ def validate_workflow(wf: "Workflow") -> None:
         _validate_node(n)
 
 
-def validate_yaml(yml_text: str) -> dict[str, Any]:
+def validate_yaml(
+    yml_text: str,
+    *,
+    forbid_patterns: list[str] | None = None,
+) -> dict[str, Any]:
     """Parse + structurally validate a Dify workflow yml string.
 
     Returns the parsed dict on success. Raises ValidationError otherwise.
+
+    `forbid_patterns` (optional, M12 PR-2): substring patterns that MUST NOT
+    appear anywhere in the raw yml text. Used to block LLM prompt-injection
+    attempts at template-time — e.g. `{{#env.X#}}` or `${ENV.X}`. The check
+    runs against the raw text before parsing so we catch injection even when
+    the malicious payload sits inside a YAML scalar or comment.
     """
+    if forbid_patterns:
+        for pattern in forbid_patterns:
+            if pattern and pattern in yml_text:
+                raise ValidationError(f"yml contains forbidden pattern: {pattern!r}")
+
     try:
         data = yaml.safe_load(yml_text)
     except yaml.YAMLError as e:

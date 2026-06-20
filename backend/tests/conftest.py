@@ -220,6 +220,47 @@ async def public_client(setup_test_db):
         yield ac
 
 
+@pytest_asyncio.fixture(loop_scope="function")
+async def plan_a_workspace(setup_test_db):
+    """M12 PR-4 — flip the test workspace into Plan A mode.
+
+    Sets ``dify_enabled=True`` + ``dify_admin_email`` + Fernet-encrypted
+    ``dify_admin_password_ref`` so ``_provision_dify_app`` does NOT early-return
+    at the ``if not workspace.dify_enabled`` guard (endpoints.py line 2089).
+    Tests using this fixture exercise the DSLGenerator wiring path end-to-end.
+
+    Returns the affected ``Workspace`` ORM instance for assertions.
+    """
+    from core.encryption import encrypt_api_key
+    from models import Workspace
+
+    async with database.AsyncSessionLocal() as session:
+        result = await session.execute(select(Workspace).order_by(Workspace.id).limit(1))
+        workspace = result.scalar_one_or_none()
+        assert workspace is not None, "setup_test_db must run first"
+        workspace.dify_enabled = True
+        workspace.dify_admin_email = "dify-admin@test.local"
+        workspace.dify_admin_password_ref = encrypt_api_key("test-dify-admin-pw")
+        workspace.dify_api_base = "http://dify-fake.test/v1"
+        await session.commit()
+        await session.refresh(workspace)
+        return workspace
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def plan_a_client(setup_test_db, plan_a_workspace):
+    """Authenticated AsyncClient bound to the Plan-A workspace (super_admin role)."""
+    from main import app
+
+    token = await _ensure_test_admin_with_role("super_admin", workspace_id=plan_a_workspace.id)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test", timeout=30.0
+    ) as ac:
+        ac.headers.update({"Authorization": f"Bearer {token}"})
+        yield ac
+
+
 async def _ensure_test_admin_with_role(
     role: str, workspace_id: int | None = None
 ) -> str:

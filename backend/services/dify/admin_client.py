@@ -5,9 +5,11 @@ vs ``DifyClient`` (M10, 消费侧):
     - DifyAdminClient: 调 ``/console/api/*`` (admin session cookie, email/password),
       用于: 创建 App、创建 Workflow、启用 API、创建 per-app API key、publish workflow
 
-生产侧 5 步工作流 (D3 课程修正 + D8 + D9c 决策):
+生产侧 5 步工作流 (D3 课程修正 + D8 + D9c 决策 + M12 PR-0 D9c-2):
     Step 1: ``POST /console/api/apps`` (body ``mode="workflow"``)
-    Step 2: ``POST /console/api/apps/{app_id}/workflows/draft`` (空 graph 懒创建)
+    Step 2: ``POST /console/api/apps/{app_id}/workflows/draft`` (M12 PR-0: 最小
+            Start+End graph, 替代历史 ``nodes: []`` 空图; 可通过 ``graph=`` 参数
+            透传完整 graph)
     Step 3: ``POST /console/api/apps/{app_id}/api-enable`` (``{"enable_api": true}``)
     Step 4: ``POST /console/api/apps/{app_id}/api-keys`` → 返回 ``app-xxx`` token
     Step 5: ``POST /console/api/apps/{app_id}/workflows/publish`` (D9c 容错)
@@ -269,11 +271,21 @@ class DifyAdminClient:
         icon_type: str = "emoji",
         icon: str = "🤖",
         icon_background: str = "#FFEAD5",
+        *,
+        graph: dict[str, Any] | None = None,
     ) -> dict:
-        """2-step 创建 App + 懒创建 Workflow 行 (D3 课程修正)。
+        """2-step 创建 App + 懒创建 Workflow 行 (D3 课程修正 + M12 PR-0 D9c-2)。
 
         Step 1: ``POST /console/api/apps`` (body ``mode=workflow``)
-        Step 2: ``POST /console/api/apps/{app_id}/workflows/draft`` (空 graph 合法)
+        Step 2: ``POST /console/api/apps/{app_id}/workflows/draft``
+
+        graph 参数 (M12 PR-0 D9c-2):
+            - None (默认):  用 ``services.dify_toolkit.builder`` 构造最小
+              Start+End graph, 避免 Dify 1.14.2 publish 时
+              ``dify_publish_status="publish_failed"`` (因 ``nodes: []`` 空图
+              被 Dify 拒)。
+            - dict (非 None): 透传给 Dify 同步接口, 用于 PR-4 接入 LLM 生成的
+              完整 workflow (含 LLM/Knowledge Retrieval 等节点)。
 
         原子性: step 2 失败 → 调 ``DELETE /apps/{app_id}`` 回滚 step 1, 再抛。
 
@@ -304,13 +316,42 @@ class DifyAdminClient:
                 f"create_app returned no id: {app_resp.text[:200]}"
             )
 
-        # Step 2: lazy create workflow 行 (空 graph)
+        # Step 2: lazy create workflow 行
+        # M12 PR-0 D9c-2: graph=None 时构造最小 Start+End, 避免
+        # Dify 1.14.2 publish_workflow 因 ``nodes: []`` 空图返回失败。
+        if graph is None:
+            from services.dify_toolkit.builder import (
+                EndNode,
+                StartNode,
+                Variable,
+                Workflow,
+            )
+
+            fallback_wf = Workflow(name=f"{name}_minimal_fallback")
+            fallback_wf.add(StartNode(
+                variables=[Variable(
+                    variable="sys.query",
+                    label="user_input",
+                    type="paragraph",
+                    max_length=10000,
+                    required=True,
+                )],
+            ))
+            fallback_wf.add(EndNode(outputs=[
+                {"variable": "output", "value_selector": []},
+            ]))
+            fallback_wf.connect("4001", "4099")
+            graph = fallback_wf.to_dict()["workflow"]["graph"]
+            logger.info(
+                "create_app_and_workflow: using minimal Start+End graph (M12 PR-0) for app %s",
+                app_id,
+            )
         try:
             wf_resp = await self._request(
                 "POST",
                 f"/console/api/apps/{app_id}/workflows/draft",
                 json_body={
-                    "graph": {"nodes": [], "edges": []},
+                    "graph": graph,
                     "features": {},
                     "environment_variables": [],
                     "conversation_variables": [],
