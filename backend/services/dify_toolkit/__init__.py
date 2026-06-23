@@ -58,12 +58,31 @@ from .builder import (
     VariableAggregatorNode,
     Workflow,
 )
-from .deployer import Deployer, DeployResult
 from .exceptions import DifyPublishError, DifySchemaError
 from .verifier import CaseResult, TestCase, VerificationReport, Verifier
 from .yml_validator import ValidationError, validate_yaml
 
 __version__ = "0.3.0-p0c-pr2"
+
+# Lazy attribute proxies (PEP 562) — defer heavy transitive imports
+# (notably psycopg2 via services.dify_toolkit.deployer → .db) until first
+# access. This prevents the dev container from crashing on `import
+# services.dify_toolkit` when psycopg2 isn't installed (CI/sandbox without
+# Postgres direct driver).
+_LAZY_ATTRS = {
+    "Deployer": "services.dify_toolkit.deployer",
+    "DeployResult": "services.dify_toolkit.deployer",
+}
+
+
+def __getattr__(name: str):  # PEP 562 module-level __getattr__
+    if name in _LAZY_ATTRS:
+        import importlib
+        mod = importlib.import_module(_LAZY_ATTRS[name])
+        value = getattr(mod, name)
+        globals()[name] = value  # cache for next access
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     # Builder
