@@ -191,9 +191,17 @@ services:
       dockerfile: Dockerfile.dev
     container_name: basjoo-backend-dev
     ports:
-      - "8000:8000"
+      - "8002:8000"  # host 8002 → container 8000 (host 8000 occupied by root-owned nginx/Dify stack, 2026-06-25)
     environment:
       - DATABASE_URL=sqlite:////app/data/basjoo.db
+      # M11+ reconnect: Dify admin creds (system-level, NOT per-tenant)
+      # Source: memory/fact-dify-instance-credentials.md
+      # Test instance: 162.211.183.169 (Dify 1.14.2 fork-m11)
+      - DIFY_API_BASE=http://162.211.183.169
+      - DIFY_ADMIN_EMAIL=admin@basjoo.test
+      - DIFY_ADMIN_PASSWORD=M14E2EPass1!
+      - DIFY_DEFAULT_WORKSPACE_ID=98a9d237-8b84-4394-8433-372655579073
+      - DIFY_ENABLE_AUTO_PROVISION=true
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key}

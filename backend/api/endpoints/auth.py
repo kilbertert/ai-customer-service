@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Deque, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -6,6 +7,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from sqlalchemy import select, func, delete
+from config import settings
+from core.encryption import encrypt_api_key
 from database import get_db
 from models import AdminUser, Workspace, WorkspaceQuota, AgentMember
 from services.auth_service import (
@@ -20,6 +23,73 @@ from i18n.core import get_locale_from_request, _
 
 import time
 from collections import defaultdict, deque
+
+logger = logging.getLogger(__name__)
+
+
+async def bind_workspace_to_dify_if_enabled(workspace: Workspace, db: AsyncSession) -> dict:
+    """M9.5+: Super admin bootstrap Dify auto-bind.
+
+    Reads system-level Dify config from settings:
+      - settings.dify_enable_auto_provision (master switch)
+      - settings.dify_api_base
+      - settings.dify_admin_email
+      - settings.dify_admin_password
+      - settings.dify_default_workspace_id
+
+    If enabled and all 4 required fields are present, populate workspace.dify_*
+    with Fernet-encrypted admin password and bind to default Dify workspace.
+
+    Returns:
+        dict with keys: bound (bool), reason (str), error (Optional[str])
+        - bound=True  → workspace updated, status='ready'
+        - bound=False → not enabled / missing fields / Dify unreachable (status='failed')
+    """
+    if not settings.dify_enable_auto_provision:
+        return {"bound": False, "reason": "auto_provision_disabled"}
+
+    required = {
+        "dify_api_base": settings.dify_api_base,
+        "dify_admin_email": settings.dify_admin_email,
+        "dify_admin_password": settings.dify_admin_password,
+        "dify_default_workspace_id": settings.dify_default_workspace_id,
+    }
+    missing = [k for k, v in required.items() if not v]
+    if missing:
+        return {
+            "bound": False,
+            "reason": "missing_settings",
+            "error": f"Required settings missing: {missing}",
+        }
+
+    # All present → bind
+    try:
+        workspace.dify_api_base = settings.dify_api_base
+        workspace.dify_admin_email = settings.dify_admin_email
+        workspace.dify_admin_password_ref = encrypt_api_key(settings.dify_admin_password)
+        workspace.dify_workspace_id = settings.dify_default_workspace_id
+        workspace.dify_enabled = True
+        workspace.dify_provisioning_status = "ready"
+        await db.flush()
+        logger.info(
+            "bind_workspace_to_dify_if_enabled: ws_id=%s bound to Dify workspace %s",
+            workspace.id,
+            settings.dify_default_workspace_id,
+        )
+        return {
+            "bound": True,
+            "reason": "auto_bound",
+            "dify_workspace_id": settings.dify_default_workspace_id,
+        }
+    except Exception as e:
+        # fail-graceful: log error but allow bootstrap to complete
+        logger.warning(
+            "bind_workspace_to_dify_if_enabled: ws_id=%s failed: %s", workspace.id, e
+        )
+        workspace.dify_provisioning_status = "failed"
+        workspace.dify_provisioning_last_error = str(e)[:500]
+        await db.flush()
+        return {"bound": False, "reason": "exception", "error": str(e)[:200]}
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -153,7 +223,16 @@ async def get_current_admin(
 VALID_ADMIN_ROLES = {"super_admin", "admin", "support"}
 
 
-def require_super_admin(current_admin: AdminUser):
+def require_super_admin(current_admin: AdminUser = Depends(get_current_admin)):
+    """M9.5+ fix: 加 Depends(get_current_admin) 让 FastAPI 能正确注入。
+
+    原版只写 `def require_super_admin(current_admin: AdminUser)` 无 Depends 标记,
+    导致 `Depends(require_super_admin)` 被 FastAPI 当成 body field 处理,
+    报 "Invalid args for response field" 启动错误。
+
+    历史 callers (`require_super_admin(current_admin)`) 仍兼容,因为 current_admin
+    仍是 positional/keyword 参数。
+    """
     if current_admin.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -271,6 +350,12 @@ async def register(
         quota = WorkspaceQuota(workspace_id=workspace.id)
         db.add(quota)
         await db.flush()
+
+        # M9.5+: Super admin bootstrap Dify auto-bind (fail-graceful)
+        # 若 DIFY_* env 已配置且 dify_enable_auto_provision=True,
+        # 自动把 workspace 绑到默认 Dify workspace;否则保持 dify_enabled=False
+        bind_result = await bind_workspace_to_dify_if_enabled(workspace, db)
+        logger.info("register bootstrap Dify bind result: %s", bind_result)
 
         admin = await auth_service.create_admin(
             email=req.email,

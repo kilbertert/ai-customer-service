@@ -162,6 +162,14 @@ class Settings(BaseSettings):
     dify_api_base: str = ""
     dify_api_key: str = ""
 
+    # M9.5+ Super admin Dify auto-provisioning (system-level, NOT per-tenant)
+    # 由 backend/.env 或 docker-compose env 注入;bootstrap 与 alembic migration 都读这 4 个
+    # 全部非空 + dify_default_workspace_id 存在 → 自动把 workspace 切到 Plan A
+    dify_admin_email: str = ""        # Dify 实例 admin email (如 admin@basjoo.test)
+    dify_admin_password: str = ""     # Dify 实例 admin 明文密码 (Fernet 加密入 DB)
+    dify_default_workspace_id: str = ""  # Dify 端 workspace UUID (basjoo 默认绑定目标)
+    dify_enable_auto_provision: bool = False  # 总开关: True 启用 bootstrap / migration 自动绑定
+
     # Multimodal chat (PR13) — image captioning + voice transcription
     media_storage_dir: str = "/app/data/attachments"
     vision_api_key: str = ""

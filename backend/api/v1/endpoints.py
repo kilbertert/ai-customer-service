@@ -11,6 +11,8 @@ from fastapi import (
     UploadFile,
     File,
     BackgroundTasks,
+    Body,
+    Path,
 )
 from fastapi.responses import StreamingResponse
 import httpx
@@ -24,6 +26,7 @@ import logging
 import re
 import time
 import uuid
+from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 
 import database
@@ -34,6 +37,7 @@ from api.endpoints.auth import (
     require_admin_or_super_admin,
     require_chat_operator,
     require_super_admin,
+    bind_workspace_to_dify_if_enabled,
 )
 from models import (
     Agent,
@@ -4410,3 +4414,85 @@ async def admin_websocket(websocket: WebSocket):
         manager.disconnect(websocket)
     except Exception:
         manager.disconnect(websocket)
+
+
+# ==============================================================================
+# M9.5+ Admin: re-bind existing workspace to Dify
+# ==============================================================================
+
+
+class DifyBindRequest(BaseModel):
+    """Body for POST /admin/workspaces/{workspace_id}/dify-bind."""
+
+    force_rebind: bool = False
+    dify_workspace_id: str = ""
+
+
+@router.post("/admin/workspaces/{workspace_id}/dify-bind")
+async def admin_workspace_dify_bind(
+    workspace_id: int,
+    current_user: AdminUser = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M9.5+: 重新绑定 workspace 到 Dify(用 settings 默认值)。
+
+    简化版 — body 参数(DifyBindRequest)暂去掉,纯靠 settings 里的
+    dify_default_workspace_id。如果要 override Dify workspace ID,直接改 DB。
+    """
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workspace {workspace_id} not found",
+        )
+
+    # Use settings defaults via helper
+    bind_result = await bind_workspace_to_dify_if_enabled(workspace, db)
+    await db.commit()
+
+    if not bind_result.get("bound"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"dify-bind did not bind: reason={bind_result.get('reason')}, "
+                f"error={bind_result.get('error')}. "
+                f"Check backend settings: dify_enable_auto_provision, "
+                f"dify_api_base, dify_admin_email, dify_admin_password, "
+                f"dify_default_workspace_id."
+            ),
+        )
+
+    return {
+        "success": True,
+        "workspace_id": workspace.id,
+        "dify_workspace_id": workspace.dify_workspace_id,
+        "bind_result": bind_result,
+    }
+
+
+@router.get("/admin/workspaces/{workspace_id}/dify-status", response_model=None)
+async def admin_workspace_dify_status(
+    workspace_id: int,
+    current_user: AdminUser = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """M9.5+: 查看 workspace 的 Dify 绑定状态。"""
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workspace {workspace_id} not found",
+        )
+    return {
+        "workspace_id": workspace.id,
+        "dify_enabled": workspace.dify_enabled,
+        "dify_api_base_set": bool(workspace.dify_api_base),
+        "dify_workspace_id": workspace.dify_workspace_id,
+        "dify_admin_email": workspace.dify_admin_email,
+        "dify_admin_password_set": bool(workspace.dify_admin_password_ref),
+        "dify_provisioning_status": workspace.dify_provisioning_status,
+        "dify_provisioning_attempts": workspace.dify_provisioning_attempts,
+        "dify_provisioning_last_error": workspace.dify_provisioning_last_error,
+    }

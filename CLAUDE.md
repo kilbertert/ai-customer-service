@@ -65,7 +65,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run one test file: `pytest tests/test_api.py`
 - Run one test: `pytest tests/test_api.py::test_name`
 - Test discovery is configured by `backend/pytest.ini` (`tests/`, `test_*.py`, `Test*`, `test_*`)
-- Health check while developing locally: `curl http://localhost:8000/health`
+- Health check while developing locally: `curl http://localhost:8002/health` (host 8002 → container 8000; host 8000 is occupied by Dify/root nginx stack on this host)
 
 ## Architecture
 
