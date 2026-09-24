@@ -129,6 +129,9 @@ temp/
 !/docs/operations.md
 !/docs/deploy-pzalo.md
 !/docs/multimodal-quickref.md
+# CHANGELOG.md 由 dev-changelog 生成，无法承载 2026-04-16 之前那批人工提炼的描述
+# （原提交的主题与正文都不含这些细节，生成器无法重建），故在 docs/ 下归档保留
+!/docs/changelog-archive-2026-04.md
 
 # Local AI/code intelligence caches
 .pi-lens/cache/
