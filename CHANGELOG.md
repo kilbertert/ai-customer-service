@@ -1,48 +1,239 @@
 # Changelog
 
-All notable changes to this project should be documented in this file.
+All notable changes to this project are documented in this file.
 
-The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
-
-- One-command production installer/deployer (`install-deploy.sh`): auto-installs Docker/Compose, clones/syncs repository, deploys production profile via `deploy.sh`, and verifies container health checks.
-- `deploy.sh` now supports `BASJOO_DOCKER_BIN` environment variable for custom Docker binary invocation (e.g., `sudo docker`).
-- SSRF protection for URL ingestion (`backend/services/url_safety.py`): blocks localhost, direct IP literals, embedded credentials, and hostnames resolving to private/special-use IPs.
-- Admin authentication at the router level for URL/Q&A management (`url_endpoints.py`) and index rebuild (`index_endpoints.py`) endpoints.
-- `cors_allow_null_origin` config flag (default `false`) for explicit `file://` widget preview support in dev environments.
-- `ENCRYPTION_KEY` / `ENCRYPTION_KEY_FILE` for Fernet-based API key encryption at rest (`core/encryption.py`).
-- `REQUIRE_SECRET_KEY` environment variable to reject insecure secret keys in production.
-- Key rotation support for Jina embedding client.
-- E2E test workflow with Playwright: smoke, prod-like, and widget cross-origin test projects.
+- Add embedding batch settings and widget fixes
+- Restructure KB UI with collapsible sidebar nav and reset flow
+- Auto-ingest URLs into R2R immediately after fetch
+- Liquid glassmorphism UI refactor for frontend
+- Add agent management interface
+- Scope agents to workspace permissions
+- Add strings for post-create KB onboarding modal
+- Add test for kbStatus helper for agent onboarding
+- Add useAgentKbStatus for onboarding flow
+- Auto-open KB onboarding after agent creation
+- Add qdrant-client and QDRANT_* settings for KB collections
+- Add migration script for agents.kb_id column
+- Add Tenant/KnowledgeBase/KbDocument/KbChunk models + Agent.kb_id
+- Add QdrantKbService with idempotent ensure_collection + dim mapping
+- Add KbService enforcing tenant_id on every query + create with Qdrant ensure
+- Add chunk_size/overlap to KnowledgeBase and error_message/file_size to KbDocument
+- Migration for KB chunk params and document error fields
+- Add batch_upsert, delete_by_doc, delete_collection to QdrantKbService
+- Implement DocumentParser with pdf/docx/xlsx + recursive chunk + embed call + retry
+- Add get_knowledge_base tenant-enforced to KbService
+- KbDocumentProcessor with upload/save/process/delete pipeline + retry
+- Add KbDocument* Pydantic schemas
+- Add require_tenant_access dependency for tenant isolation
+- Kb_document_endpoints with upload (5 files/20MB), progress, delete + tenant check
+- Mount kb_document_endpoints and add parse dependencies
+- Implement KB document upload, parsing, chunking and indexing pipeline
+- Add search_kb with tenant+kb payload filter (double isolation)
+- Add KbRetrievalService with tenant/agent validation + threshold filter
+- Add Retrieve* schemas + kb_id to AgentConfig (backward compat)
+- Add /tenants/{tenant}/agents/{agent}/retrieve endpoint (tenant validated)
+- Integrate KbRetrievalService into prepare_chat_request (append after system_prompt)
+- Add status/error_message to KnowledgeBase + migration
+- Add get/update_kb_config with is_locked 409 guard + row lock
+- Add reset/delete/detail methods to KbService + KB_RESET task type
+- Add KB config/reset/detail/delete endpoints + Pydantic schemas
+- Set is_locked=True after first successful document indexing
+- Complete multi-tenant KB system (Qdrant collections, document pipeline, retrieve, chat context, lock/reset/delete, tenant isolation)
+- Enforce 10 display-unit name limit + rename dashboard nav to 仪表盘
+- Inline KB setup wizard in agent onboarding
+- Add URL indexing endpoints and background processing
+- Display is_indexed badge on URL cards with rebuild action
+- Extend URL polling to verify index completion before stopping
+- Add crawl error feedback to URLSource when site crawl fails or returns no results
+- Add crawl error banner and fix polling stop timing for error feedback
+- Add vi-VN locale + widget_locale system prompt injection
+- Add language selector + basjoo_widget_locale persistence
+- PR13 backend multimodal attachments (image + voice)
+- PR14 multimodal chat UI (image + voice)
+- E2e smoke + multimodal docs
+- Absorb china_charge_kf/ as subdirectory of main repo
+- M3 SseProxyLayer — Dify SSE → H5 SSE translation
+- M4 FastAPI wiring — /api/chat/stream + /api/files/upload + /health
+- M5 — H5 widget SSE consumer + file upload helper
+- M6.3 + M6.4 widget hardening — AbortController + error UI segregation
+- M7 e2e scaffold — Playwright config + 100x100 PNG fixture
+- M8.0 — Playwright fixtures + 6 *.spec.ts (T1-T7)
+- M8.2 — strip <think> tags from message_complete text
+- M8.1 — abort path noResponse fallback
+- M9.1 — createThinkStripper stream-level <think> buffer
+- M10 G2 PR1 — Tenant ↔ Workspace 1:1 invariant + 越权修复
+- M10 PR2-2 + PR2-3 — G3 schema/迁移 + Fernet 加密 setter
+- M10 PR2-4 — G5 #5 dual-source + #6 outputs-empty assert
+- M10 PR3a — G4 物理搬运 backend 11 files (Dify 协议层)
+- M10 PR3b — G4 物理搬运 difyStream.ts + test
+- M10 PR4a — G1 chat_stream Dify 集成 + 双层 end_user 编码
+- M10 PR4b — G5 #7 streaming think strip + admin Dify path
+- M10+1 — Dify 集成层 schema + DifyAdminClient + 16 unit tests
+- M10+2 endpoint 集成层 — Dify 4-step create_agent + 3 级 API key fallback
+- M10+3 — Agents form Dify 扩展 + DifyStatusBadge
+- M10+4 — 6 D9 patches + 真 Dify 沙箱 E2E CONDITIONAL PASS
+- M11+ P2 — Dify data backup scripts + operations.md v1.4
+- PR1 admin provision endpoint (m11)
+- PR2 dify provisioning schema (m11)
+- PR2 add one-shot migration scripts (m11)
+- Dify multi-tenant flow — super admin bootstrap bind + admin dify-bind endpoint + alembic migration
 
 ### Changed
-
-- CORS policy tightened: missing `Origin` headers no longer receive wildcard CORS; `Origin: null` only allowed when `cors_allow_null_origin` is explicitly enabled.
-- Early-response CORS handling unified through a single shared helper (`apply_cors_headers` in `backend/middleware/rate_limit.py`).
-- URL validation in schemas replaced with the shared SSRF safety check, removing localhost and direct IP acceptance.
-- Scheduler shutdown lifecycle made symmetric; secret handling and login fallback limiter tightened.
-- Health endpoint behavior unified across request paths.
-- Chat rate limits operate on per-minute sliding windows.
-- URL normalization improved for repeated query parameters.
-- URL fetch/crawl quota paths and training-state synchronization tightened.
-
-### Fixed
-
-- In-memory sliding window rate limiter now evicts stale keys to prevent unbounded map growth.
-- Widget XSS gap in source rendering and frontend polling/reconnect stability improved.
-- Widget embed security model replaced Turnstile dependency with per-agent origin whitelist enforcement.
+- Remove readonly role, restrict support to chat sessions only
+- Replace Jina Reader and local scraping with Scrapling microservice
+- Extract get_kb_collection_name helper to remove duplication
+- Rename system settings to agent settings
+- Apply consistent formatting to fixed components
+- M8.5 — extract sse_bytes helpers to public module
 
 ### Documentation
+- Update CLAUDE.md with scrapling service and SSRF policy
+- Add system requirements section to READMEs
+- Refresh screenshots (fully loaded, localized), add users page, badges, acknowledgments
+- Add Qdrant settings to .env.example
+- Update AGENTS.md for new KB document direct Qdrant pipeline
+- Remove all R2R references from README, AGENTS.md, CLAUDE.md; replace with self-KB (Qdrant)
+- Add widget test environment variables
+- Add widget test setup instructions
+- Add issue4 kb fix plan
+- Add fix urls implementation plan
+- Add files index status fix plan
+- Update AGENTS.md to reference docs/plans and docs/specs
+- Add local dev & operations manual
+- PR8/9/10 specs — split SSE §6.5, U1-U10 contract, §4.2 file-list lock
+- Add dify-integration-plan + ADR 0001/0003 with post-consolidation framing
+- Sync CLAUDE.md (root + china_charge_kf/) and china_charge_kf/README.md
+- M0.5/m1.5 — add 2026-06-13 path-still-valid note + ignore .claude/
+- M7 completion report — Playwright MCP e2e validation
+- M8.0 completion report + CI integration roadmap
+- M8.4 — add DIFY section to .env.example incl. DIFY_V2_API_KEY
+- M8.1-M8.5 cleanup suite completion report
+- M9 completion report — T7 hard-gate regression matrix
+- M10 PR2-1 — G5 doc-only changelog markers for #1/#2(a)/#4
+- Real-Dify E2E 5/5 rounds + G1 格式 5/5 + 沙箱降级路径记录
+- M10+5 — §17 M10+ Agent↔Dify 集成 + docker-compose dify opt-in + REPORT + v1 backport
+- Operations.md v1.2 + v1.3 — port collision fixes (PG 5432→5433, frontend 3000→3001)
 
-- Updated README.md / README.zh-CN.md with current commands, env vars, architecture, and security model.
-- Rewrote tests/README.md around actual test execution entry points, correcting stale directory claims.
-- Patched openspec/project.md with missing services and security requirements.
-- Added one-command production install documentation to README.md, README.zh-CN.md, and CLAUDE.md.
-- Clarified README.md / README.zh-CN.md deployment onboarding by separating automatic deployment from manual deployment.
+### Fixed
+- Clean up PR #1 — reuse AuthService, i18n, add migration
+- Harden PR 3 embedding config and widget sync
+- Make admin registration bootstrap-only, create first super_admin, drop public registration setting
+- Harden SQLite startup migrations and error responses
+- Add app path for Docker entrypoint migrations
+- Add Suspense boundary for useSearchParams in router shim
+- Make swap file creation robust across CoW filesystems
+- Switch scrapling service to python:3.11-slim with stable deps
+- Site crawl persistence, SSRF false positive, scrapling fallback
+- Whitelist 198.18.0.0/15 in SSRF to allow real websites on benchmarking range
+- Proactively set retraining ref to prevent polling from missing fast rebuilds
+- Align frontend-backend field names and types after R2R migration
+- Flatten sidebar nav and add KB setup guard to URLs/Files pages
+- KB page sidebar, auto-detect API key on blur, remove SourcesSummary reset
+- Configure R2R completion to use DeepSeek to fix file upload 500 error
+- R2R config path, embedding prefix, and SQLAlchemy session expiry
+- R2R embedding concurrency, collection assignment, and file status
+- Allow embedding_batch_size updates without KB reset
+- Preserve file data on index rebuild, fix re-upload after delete, add missing i18n keys
+- Handle R2R 409 duplicate content on file re-upload, improve collection creation
+- Change R2R search filter from $eq to $in for collection_ids array field
+- Build FileItem inside upload loop to avoid ORM attribute expiry
+- Use form data in ingest_text, R2R rejects JSON
+- Unify single file upload limit to 50MB, cap total files at 100
+- Hide file references from chat, improve error display for invalid URLs
+- Show i18n-friendly message for invalid URL errors
+- Delete all URLs/files on KB reset, expand sidebar submenu on /knowledge, add API key links
+- Adapt ingestion and threshold for R2R hybrid search (RRF) scoring
+- Responsive layout fixes for URL management, users page, and light-mode sidebar
+- Address 5 UX/security bugs — empty RAG reply fallback, auth error precision, login rate limit configurability, DeepSeek model listing, URL title extraction
+- Add missing DeepSeek provider type and reject [no-title] sentinel in title extraction
+- Make R2R knowledge cleanup consistent
+- Enforce agent membership on knowledge endpoints
+- Harden URL deletion cleanup
+- Harden file cleanup and kb setup consistency
+- Restore knowledge file routes
+- Add ensure_r2r_config_directory helper (prepares for chown on volume mount)
+- Invoke ensure_r2r_config_directory() while root (before drop_privileges)
+- Pre-create /app/r2r-config/user_configs with basjoo ownership in prod image
+- Pre-create r2r-config paths in dev image (keeps Dockerfile parity)
+- Make kb_id column addition idempotent in startup migrations
+- Clean up type annotations in config.py and sqlite_migrations.py
+- Remove duplicate KnowledgeBase query in chat KB retrieval path
+- Restore urls/files KB routes via services/ thin layer (closes Not Found toast)
+- Enter agent panel after bootstrap registration
+- Scope dashboard quick start to agent workspace
+- Show agent workspace branding
+- Hide inactive agents from workspace entry
+- Authenticate bootstrap registration
+- Localize playground as debug area in Chinese
+- Finalize agent workspace bugfixes
+- Wait for admin state before auth redirect
+- Extract widget origin validation
+- Add widget embed code helper
+- Add agent settings view
+- Wire agent settings routes
+- Prevent native form submission before React hydration
+- Resolve i18n module singleton duplication in dev server
+- Call logout() on expired token during auth init
+- Reset KB config before embedding tests
+- Increase prod-like test timeout for nginx proxy
+- Use domcontentloaded in playground streaming tests
+- Use domcontentloaded in knowledge indexing tests
+- Use domcontentloaded in sessions takeover tests
+- Fix Playground and Widget E2E tests
+- Fix widget cross-origin test and add explicit timeouts
+- Fix login error display
+- Add env fallback for agent api key
+- Add loading timeout to AgentSelector
+- Replace networkidle with domcontentloaded
+- Fix all networkidle waits and race conditions in E2E tests
+- Fix 3 E2E test bugs
+- BUG-004 playground chat input accessibility - add data-testid
+- Bind agents to tenant knowledge bases
+- Integrate get_or_create_agent_kb into kb-setup endpoint
+- Index agent url sources
+- Process agent file uploads through tenant KB document pipeline
+- Use dynamic module access for AsyncSessionLocal in background tasks
+- Keep embed diagnostic test gated
+- Resolve E2E test failures for Issue #4
+- Repair jina kb initialization
+- Repair agent kb setup state and retrieval tenant derivation
+- Guard widget storage access
+- Wire embedding API key from Agent to embed_texts() in document processing and retrieval
+- Set is_indexed based on KbDocument status, not process_document return
+- Auto-set Jina embedding base URL when provider is jina and no URL configured
+- Add tenant_id filtering to KbDocument queries in sources:summary and index:info
+- Make kb initialization one-click validated
+- Default playground to deepseek flash
+- Restore agent conversation limit settings
+- Add file status polling to auto-refresh KB document status
+- Prevent taskStatusIntervalRef infinite loop in tests
+- Correct .in_() syntax in process_url_refetch query filter
+- Auto-dispatch background fetch after urls:create
+- Use metadata dict for status_code in process_url_refetch
+- Correct test fixture setup for status_code test
+- Align createURLs response type and fix upload_files DI
+- Change clearAllUrls/clearAllFiles from DELETE to POST
+- Sync crawlPolling state with taskStatus.is_crawling from backend
+- Change clearAllUrls/clearAllFiles HTTP method from DELETE to POST
+- Add message and deleted_count to urls:clear_all response
+- Expose kb indexing failures
+- Clarify url and file indexing status
+- Use indexing_status for URL badge and remove false crawl banner trigger
+- Implement BFS recursive depth crawling in Scrapling discover endpoint
+- Correct BFS max_depth check and fix test imports for curl_cffi mock
+- Add missing await in _store_crawl_error for async session
+- Add missing crawlError i18n keys for crawl error banner
+- Disable crawl button during active crawl and normalize URL input
+- Improve KB retrieval display and URL crawl error handling
+- Handle message_attachments schema drift in PR13 migration
+- M6.1 message_complete.text nullable type contract
+- M7.5 — Dify v2 inline-event fallback in _parse_sse_event
+- M8.1-UI — apply abortStatePatch to voice/upload abort path
+- M11+ P2 — 9 URL indexing fix + Plan A/B LOCKED + Dify data backup
 
----
-
-If you want to preserve release-by-release history going forward, append dated/versioned sections here whenever you cut a release.
