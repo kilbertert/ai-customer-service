@@ -191,7 +191,9 @@ services:
       dockerfile: Dockerfile.dev
     container_name: basjoo-backend-dev
     ports:
-      - "8002:8000"  # host 8002 → container 8000 (host 8000 occupied by root-owned nginx/Dify stack, 2026-06-25)
+      # Loopback-only: development plane must not publish service ports
+      # (SERVER-DEVELOPMENT-CONSENSUS, Host Fleet).
+      - "127.0.0.1:8002:8000"  # host 8002 → container 8000 (host 8000 occupied by nginx/Dify)
     environment:
       - DATABASE_URL=sqlite:////app/data/basjoo.db
       # M11+ reconnect: Dify admin creds (system-level, NOT per-tenant)
@@ -261,7 +263,8 @@ services:
       dockerfile: Dockerfile.dev
     container_name: basjoo-frontend-dev
     ports:
-      - "3001:3000"  # host 3001 → container 3000 (avoid host port 3000 conflict with NeteaseCloudMusicApi, 2026-06-14)
+      # Loopback-only (see backend-dev note above).
+      - "127.0.0.1:3001:3000"
     environment:
       - NEXT_PUBLIC_API_BASE_URL=
       - NEXT_PUBLIC_WS_BASE_URL=
